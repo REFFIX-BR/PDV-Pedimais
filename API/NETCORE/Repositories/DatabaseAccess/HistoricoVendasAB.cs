@@ -12,14 +12,15 @@ public class HistoricoVendasAB(Connection connection)
 {
     public async Task<List<VendaHistoricoAD>> ListarAsync(string companyId, string? saleNumber = null)
     {
-        const string sql = """
+        var filteringSale = !string.IsNullOrWhiteSpace(saleNumber);
+        var sql = $"""
             SELECT v.SaleNumber, v.CustomerName, v.CustomerCpf, v.PaymentType,
                    v.TotalAmount, v.OperatorName, v.SaleDate, v.Status, v.RefundedAmount,
                    i.ProductCode, i.ProductName, i.Quantity, i.ReturnedQuantity, i.UnitPrice, i.ItemTotal
             FROM VendaItens i
             INNER JOIN Vendas v ON v.Id = i.VendaId
             WHERE v.CompanyId = @CompanyId
-              AND (@SaleNumber IS NULL OR v.SaleNumber = @SaleNumber)
+              {(filteringSale ? "AND v.SaleNumber = @SaleNumber" : "")}
             ORDER BY v.SaleDate DESC;
             """;
 
@@ -27,7 +28,7 @@ public class HistoricoVendasAB(Connection connection)
         await EnsurePrintColumnsAsync(db);
         await using var command = new SqlCommand(sql, db);
         command.Parameters.AddWithValue("@CompanyId", companyId);
-        command.Parameters.AddWithValue("@SaleNumber", string.IsNullOrWhiteSpace(saleNumber) ? DBNull.Value : saleNumber);
+        if (filteringSale) command.Parameters.AddWithValue("@SaleNumber", saleNumber);
         await using var reader = await command.ExecuteReaderAsync();
         var rows = new List<VendaHistoricoAD>();
         while (await reader.ReadAsync())

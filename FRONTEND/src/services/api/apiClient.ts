@@ -3,7 +3,7 @@
  * Objetivo: centralizar chamadas HTTP para a API .NET do Hórus PDV.
  * Entradas esperadas: recebe caminho, método e payload opcional para executar requisições autenticadas.
  */
-import { clearAuthSession, getAuthRemember, getStoredAuthToken, setAuthSession, type AuthenticatedUser } from "@/utils/authStorage";
+import { clearAuthSession, getAuthRemember, getStoredAuthToken, getStoredAuthUser, setAuthSession, type AuthenticatedUser } from "@/utils/authStorage";
 import { enqueueOutbox, readJsonCache, writeJsonCache } from "@/services/offline/outbox";
 
 export type ApiResponse<T> = {
@@ -219,7 +219,7 @@ export async function apiRequest<T>(
       return await performRequest<T>(endpointUrl, options);
     } catch (second) {
       if (!(second instanceof TransportError)) throw second;
-      const localId = enqueueOutbox({
+      const localId = await enqueueOutbox({
         url: resolveApiUrl(endpointUrl),
         method: options.method || "POST",
         body: typeof options.body === "string" ? options.body : undefined,

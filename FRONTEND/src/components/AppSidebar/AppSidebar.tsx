@@ -332,7 +332,7 @@ export default function AppSidebar({
               {allow("fiscal") && (
                 <SidebarItem
                   icon={<Receipt size={20} />}
-                  label="Fiscal NFC-e / NF-e"
+                  label="Emitir nota"
                   active={activePage === "fiscal"}
                   collapsed={collapsed}
                   onClick={() => handleChangePage("fiscal")}

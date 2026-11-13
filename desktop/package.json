@@ -2,13 +2,13 @@
   "name": "horuspdv-desktop",
   "productName": "PDV-Pedimais",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1-alpha",
   "description": "Janela de caixa do PDV-Pedimais.",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
     "start:prod": "electron . --prod",
-    "dist": "npx electron-builder --win --config electron-builder.config.cjs && node write-update-manifest.cjs"
+    "dist": "npm --prefix ../FRONTEND run build:desktop && npx electron-builder --win --config electron-builder.config.cjs && node write-update-manifest.cjs"
   },
   "build": {
     "appId": "br.com.pedimais.pdv",

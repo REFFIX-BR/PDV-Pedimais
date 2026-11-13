@@ -9,3 +9,7 @@ contextBridge.exposeInMainWorld("horusDesktop", {
   },
   installUpdate: () => ipcRenderer.invoke("pdv-install-update"),
 });
+
+contextBridge.exposeInMainWorld("pdvLocal", {
+  invoke: (payload) => ipcRenderer.invoke("pdv-local", payload),
+});

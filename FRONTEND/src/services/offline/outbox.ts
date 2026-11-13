@@ -4,6 +4,7 @@
  * Entradas esperadas: URL, método e corpo já montados pela chamada que falhou.
  */
 import { getStoredAuthToken } from "@/utils/authStorage";
+import { enqueueLocal, hasLocalDatabase, markLocalSent, pendingLocal } from "@/services/offline/localDb";
 
 const OUTBOX_KEY = "horuspdv.outbox";
 const CACHE_KEY = "horuspdv.cache";
@@ -33,14 +34,26 @@ function writeOutbox(items: OutboxItem[]) {
   window.localStorage.setItem(OUTBOX_KEY, JSON.stringify(items));
 }
 
-export function enqueueOutbox(entry: Omit<OutboxItem, "id" | "createdAt">) {
+export async function enqueueOutbox(entry: Omit<OutboxItem, "id" | "createdAt">) {
   const item: OutboxItem = {
     ...entry,
     id: crypto.randomUUID().replace(/-/g, "").slice(0, 12),
     createdAt: new Date().toISOString(),
   };
+  if (hasLocalDatabase()) {
+    await enqueueLocal(item);
+    return item.id;
+  }
   writeOutbox([...readOutbox(), item]);
   return item.id;
+}
+
+async function importLegacyQueue() {
+  if (!hasLocalDatabase()) return;
+  const items = readOutbox();
+  if (items.length === 0) return;
+  for (const item of items) await enqueueLocal(item);
+  writeOutbox([]);
 }
 
 function readBag(): CacheBag {
@@ -67,14 +80,28 @@ export function writeJsonCache(key: string, value: unknown) {
 
 let flushing = false;
 
+async function readPending() {
+  if (hasLocalDatabase()) {
+    await importLegacyQueue();
+    return pendingLocal<OutboxItem>();
+  }
+  return readOutbox();
+}
+
+async function keepPending(items: OutboxItem[]) {
+  if (hasLocalDatabase()) return;
+  writeOutbox(items);
+}
+
 export async function flushOutbox() {
   if (flushing || typeof window === "undefined") return 0;
-  const items = readOutbox();
+  const items = await readPending();
   if (items.length === 0) return 0;
 
   flushing = true;
   let sent = 0;
   const remaining: OutboxItem[] = [];
+  const sentIds: string[] = [];
   try {
     for (const item of items) {
       let response: Response;
@@ -101,13 +128,15 @@ export async function flushOutbox() {
 
       if (response.ok) {
         sent += 1;
+        sentIds.push(item.id);
         continue;
       }
 
       remaining.push(item);
     }
   } finally {
-    writeOutbox(remaining);
+    if (hasLocalDatabase()) await markLocalSent(sentIds);
+    await keepPending(remaining);
     flushing = false;
   }
 

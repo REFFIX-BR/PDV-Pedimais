@@ -122,7 +122,6 @@ function ProductFormDrawer({
     maskMoneyBr,
     parseMoneyBr,
     formatMoneyBr,
-    sanitizeIntegerInput,
   } = useInputMasks();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);

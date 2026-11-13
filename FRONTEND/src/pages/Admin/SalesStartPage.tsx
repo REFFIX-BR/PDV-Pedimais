@@ -20,7 +20,7 @@ import ReceiptPreviewModal, {
   type SaleReceipt,
 } from "@/components/Admin/ReceiptPreviewModal";
 import { companyService, type CompanyDto } from "@/services/api/companyService";
-import { productService, reduceCachedProductStock } from "@/services/api/productService";
+import { productService, recordOfflineSale, reduceCachedProductStock } from "@/services/api/productService";
 import { OUTBOX_SENT_EVENT } from "@/services/offline/outbox";
 import { couponService, type CouponKind } from "@/services/api/couponService";
 import { salesHistoryService } from "@/services/api/salesHistoryService";
@@ -696,6 +696,19 @@ export default function SalesStartPage({
       });
       if (result.savedOffline) {
         cart.forEach((item) => reduceCachedProductStock(item.code, item.stockQuantity));
+        await recordOfflineSale({
+          saleNumber: result.saleNumber,
+          customerName: "Consumidor",
+          customerCpf: cpfNota || "-",
+          paymentType,
+          totalAmount: formatMoneyBr(payable),
+          operatorName,
+          items: cart.map((item) => ({
+            code: item.code,
+            name: item.name,
+            quantity: item.stockQuantity,
+          })),
+        });
       }
       const receipt: SaleReceipt = {
         saleNumber: result?.saleNumber || `PDV-${Date.now()}`,

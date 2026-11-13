@@ -8,5 +8,18 @@ const url = String(feed.url || "").trim().replace(/\/+$/, "");
 
 module.exports = {
   ...pkg.build,
+  npmRebuild: false,
+  extraResources: [{ from: "../FRONTEND/dist", to: "frontend" }],
+  win: {
+    ...pkg.build.win,
+    target: [
+      { target: "nsis", arch: ["x64"] },
+      { target: "nsis", arch: ["ia32"] },
+    ],
+  },
+  nsis: {
+    ...pkg.build.nsis,
+    artifactName: "PDV-Pedimais-${version}-${arch}.${ext}",
+  },
   publish: url ? [{ provider: "generic", url }] : null,
 };

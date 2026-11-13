@@ -437,8 +437,226 @@
    AUTH / LOGIN PAGE
 ===================================================== */
 
+.auth-stage {
+  position: relative;
+  min-height: 100vh;
+  overflow: auto;
+  background: #f3f8fb;
+  color: #0f172a;
+}
+
+.auth-stage-wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 46% 38% at 8% 10%, rgba(46, 191, 244, 0.34), transparent 70%),
+    radial-gradient(ellipse 40% 34% at 96% 92%, rgba(249, 115, 22, 0.2), transparent 72%),
+    linear-gradient(180deg, #f8fbfe 0%, #e7f2f8 100%);
+}
+
+.auth-stage-frame {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-items: center;
+  gap: 2rem;
+  width: min(1080px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2rem;
+}
+
+.auth-story h1 {
+  margin: 1.25rem 0 0;
+  max-width: 12ch;
+  font-size: clamp(2.4rem, 4vw, 3.6rem);
+  font-weight: 760;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
+  color: #0c4a6e;
+}
+
+.auth-story > p {
+  margin-top: 1rem;
+  max-width: 34ch;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.auth-story ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-story li {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: #0e7490;
+}
+
+.auth-story-logo {
+  border-radius: 18px;
+  box-shadow: 0 12px 28px rgba(3, 105, 161, 0.22);
+}
+
+.auth-story-wordmark {
+  display: block;
+  margin-top: 1rem;
+}
+
+.auth-sheet {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  padding: 1.7rem 1.35rem 1.4rem;
+  box-shadow: 0 24px 60px rgba(7, 89, 133, 0.14);
+}
+
+.auth-sheet::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 7px;
+  background: linear-gradient(90deg, #0284c7 0%, #38bdf8 58%, #fb923c 100%);
+}
+
+.auth-sheet h2 {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.auth-sheet-lead {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.auth-sheet-body {
+  margin-top: 1.35rem;
+}
+
+.auth-sheet-body > * + * {
+  margin-top: 1rem;
+}
+
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  color: #0369a1;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.auth-sheet .btn-primary {
+  border-radius: 14px;
+  background: linear-gradient(90deg, #0369a1, #0ea5e9);
+  min-height: 3rem;
+}
+
+.auth-sheet .btn-primary:hover {
+  background: linear-gradient(90deg, #075985, #0284c7);
+}
+
+.auth-sheet .input-field {
+  min-height: 2.85rem;
+  border-color: #d7e3ee;
+  background: #f8fbfd;
+}
+
+.auth-quiet-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 1rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.auth-text-link {
+  color: #0369a1;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.auth-text-link:hover {
+  color: #0c4a6e;
+}
+
+.auth-text-link:disabled {
+  opacity: 0.6;
+}
+
+@media (min-width: 640px) {
+  .auth-text-link {
+    text-align: right;
+  }
+}
+
+.auth-quiet-links a {
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.auth-quiet-links a:hover {
+  color: #0c4a6e;
+}
+
 .auth-login-card {
   animation: authCardIn 0.34s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+@media (min-width: 960px) {
+  .auth-stage-frame {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 3.5rem;
+    padding: 3rem 2rem;
+  }
+
+  .auth-sheet {
+    padding: 2.1rem 1.8rem 1.6rem;
+  }
+}
+
+@media (max-width: 959px) {
+  .auth-story h1,
+  .auth-story > p,
+  .auth-story ul {
+    display: none;
+  }
+
+  .auth-story {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+  }
+
+  .auth-story-wordmark {
+    margin-top: 0;
+    height: 2.7rem;
+  }
 }
 
 .auth-login-reveal-1 {

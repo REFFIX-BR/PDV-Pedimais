@@ -3,8 +3,10 @@
  * Objetivo: encapsula chamadas HTTP de abertura, fechamento e status de caixa.
  * Entradas esperadas: recebe payloads já validados pelas telas e retorna respostas tipadas da API.
  */
-import { apiRequest, SavedOfflineError } from "./apiClient";
+import { getStoredAuthUser } from "@/utils/authStorage";
+import { apiRequest, SavedOfflineError, TransportError } from "./apiClient";
 import { readJsonCache, writeJsonCache } from "@/services/offline/outbox";
+import { hasLocalDatabase, readLocalState, saveLocalState } from "@/services/offline/localDb";
 
 const CAIXA_API_URL = import.meta.env.VITE_CAIXA_API_URL ?? "http://localhost:5260/api/Caixa";
 
@@ -111,6 +113,8 @@ function offlineCash(patch: Partial<CashRegisterStatusDto>): CashRegisterStatusD
     ...patch,
   };
   writeJsonCache(CASH_CACHE, next);
+  const company = getStoredAuthUser()?.companyId || "";
+  if (company && hasLocalDatabase()) void saveLocalState(`caixa:${company}`, next);
   return next;
 }
 
@@ -120,10 +124,19 @@ export const cashRegisterService = {
     return response.data;
   },
   async status() {
-    const response = await apiRequest<CashRegisterStatusDto>(`${CAIXA_API_URL}/status`, {
-      cacheKey: CASH_CACHE,
-    });
-    return response.data;
+    try {
+      const response = await apiRequest<CashRegisterStatusDto>(`${CAIXA_API_URL}/status`);
+      if (response.data) return rememberCash(response.data);
+      return response.data;
+    } catch (error) {
+      if (!(error instanceof TransportError)) throw error;
+      const company = getStoredAuthUser()?.companyId || "";
+      if (company && hasLocalDatabase()) {
+        const local = await readLocalState<CashRegisterStatusDto>(`caixa:${company}`);
+        if (local) return local;
+      }
+      return readJsonCache<CashRegisterStatusDto>(CASH_CACHE);
+    }
   },
   async open(openingAmount: string) {
     try {

@@ -288,10 +288,16 @@ export const TOUR_STEPS_BY_PAGE: Partial<Record<TourPageKey, TourStep[]>> = {
 
   fiscal: steps("fiscal", [
     [
-      "fiscal-aviso",
-      "Nota fiscal",
-      "A NFC-e fica para depois. Esta tela não envia nada para a SEFAZ e o cupom da venda continua sendo o comprovante do caixa.",
-      `[data-tour="page-header"]`,
+      "fiscal-vendas",
+      "Venda",
+      "Escolha a venda que vai virar nota. Venda estornada não emite.",
+      `[data-tour="fiscal-vendas"]`,
+    ],
+    [
+      "fiscal-emitir",
+      "Emitir",
+      "NFC-e é a nota do balcão, com CPF opcional. NF-e é a nota para outra empresa. A transmissão só começa quando a chave da Autoriza estiver ligada.",
+      `[data-tour="fiscal-emitir"]`,
     ],
   ]),
 

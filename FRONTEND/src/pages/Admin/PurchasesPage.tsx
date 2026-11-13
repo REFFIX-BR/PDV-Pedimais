@@ -583,7 +583,7 @@ export default function PurchasesPage() {
             )}
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={closeOrder} className="btn-cancel" disabled={saving}>
+              <button type="button" onClick={() => closeOrder()} className="btn-cancel" disabled={saving}>
                 Cancelar
               </button>
               <button type="button" onClick={() => void saveOrder(false)} className="btn-outline-secondary" disabled={saving}>

@@ -217,7 +217,7 @@ export default function App() {
     "historico-vendas": "Histórico de Vendas",
     relatorios: "Relatórios",
     vendas: "Iniciar Vendas",
-    fiscal: "Fiscal NFC-e / NF-e",
+    fiscal: "Emitir nota",
     pagamentos: "Pagamentos Integrados",
     estoque: "Estoque e Inventário",
     caixa: "Abertura e Fechamento de Caixa",
@@ -537,7 +537,6 @@ export default function App() {
       .me()
       .then((session) => {
         if (!session?.user) {
-          if (getStoredAuthUser()) return;
           clearAuthSession();
           setIsAuthenticated(false);
           return;

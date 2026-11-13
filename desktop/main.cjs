@@ -1,7 +1,7 @@
 /**
  * Abre o PDV-Pedimais numa janela do Electron.
- * Em desenvolvimento usa o Vite já existente (porta 5173) e a API local (porta 5260).
- * Com --prod, serve a pasta FRONTEND/dist em 127.0.0.1:4173, origem já liberada no CORS da API.
+ * A tela fala só com https://apipdv.reffix.com.br. O banco fica no Postgres do servidor.
+ * Em desenvolvimento usa o Vite já existente (porta 5173). No executável, a tela vai junto e abre em 127.0.0.1:4173.
  */
 const { app, BrowserWindow, Menu, shell, screen, ipcMain } = require("electron");
 const { spawn } = require("child_process");
@@ -17,11 +17,11 @@ app.commandLine.appendSwitch(
   "PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,BlockInsecurePrivateNetworkRequests,LocalNetworkAccessChecks",
 );
 
+const localDb = require("./localdb/database.cjs");
 const FRONTEND_DIR = path.resolve(__dirname, "../FRONTEND");
 const APP_ICON = path.join(__dirname, "assets", "icon.ico");
-const API_DIR = path.resolve(__dirname, "../API/NETCORE");
 const WEB_CANDIDATES = ["http://localhost:5173/", "http://127.0.0.1:5173/"];
-const API_CANDIDATES = ["http://localhost:5260/", "http://127.0.0.1:5260/"];
+const API_HOST = "apipdv.reffix.com.br";
 const PROD_PORT = 4173;
 
 const ownedChildren = [];
@@ -32,9 +32,6 @@ let pendingUpdate = null;
 let stagedInstaller = null;
 let updateInstallStarted = false;
 let updateCheckRunning = false;
-
-const DEFAULT_CONNECTION =
-  "Host=127.0.0.1;Port=5432;Database=pdv_pedimais;Username=postgres;Password=pdvpedimais";
 
 function isProdMode() {
   return app.isPackaged || process.argv.includes("--prod");
@@ -107,23 +104,6 @@ function spawnProcess(command, args, options) {
   );
 }
 
-function startApi() {
-  const dotnetCommand = "dotnet";
-  return spawnProcess(
-    dotnetCommand,
-    ["run", "--project", "HORUSPDV-API.csproj", "--urls", "http://localhost:5260"],
-    {
-      cwd: API_DIR,
-      env: {
-        ...process.env,
-        DOTNET_ROLL_FORWARD: "Major",
-        ASPNETCORE_ENVIRONMENT: "Development",
-        ConnectionStrings__HorusPdv: process.env.ConnectionStrings__HorusPdv || DEFAULT_CONNECTION,
-      },
-    },
-  );
-}
-
 function startVite() {
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   return spawnProcess(
@@ -137,13 +117,13 @@ function startVite() {
 }
 
 function proxyToApi(request, response) {
-  const upstream = http.request(
+  const upstream = https.request(
     {
-      hostname: "127.0.0.1",
-      port: 5260,
+      hostname: API_HOST,
+      port: 443,
       path: request.url,
       method: request.method,
-      headers: { ...request.headers, host: "127.0.0.1:5260" },
+      headers: { ...request.headers, host: API_HOST },
     },
     (apiResponse) => {
       response.writeHead(apiResponse.statusCode || 502, apiResponse.headers);
@@ -409,7 +389,9 @@ async function checkServerVersion(feedUrl) {
   const remoteVersion = String(manifest.version || "").trim();
   if (!remoteVersion || compareVersions(remoteVersion, localVersion) <= 0) return;
 
-  const fileName = installerFileName(manifest.file);
+  const arch = process.arch === "ia32" ? "ia32" : "x64";
+  const named = manifest.files && typeof manifest.files === "object" ? manifest.files[arch] : "";
+  const fileName = installerFileName(named) || installerFileName(manifest.file);
   if (!fileName) throw new Error("o version.json não informou o instalador");
 
   const folder = path.join(app.getPath("userData"), "updates");
@@ -487,6 +469,14 @@ function createWindow() {
   window.webContents.on("did-finish-load", () => {
     if (pendingUpdate) window.webContents.send("pdv-update", pendingUpdate);
   });
+  window.webContents.on("did-fail-load", (_event, _code, _description, validatedURL, isMainFrame) => {
+    if (!isMainFrame || !validatedURL) return;
+    const devPage = validatedURL.startsWith("http://localhost:5173") || validatedURL.startsWith("http://127.0.0.1:5173");
+    if (!devPage) return;
+    setTimeout(() => {
+      if (!window.isDestroyed()) window.loadURL(validatedURL);
+    }, 1200);
+  });
   window.once("ready-to-show", () => {
     window.maximize();
     window.show();
@@ -522,24 +512,18 @@ async function firstResponding(urls) {
   return null;
 }
 
+function frontendDistDir() {
+  if (app.isPackaged) return path.join(process.resourcesPath, "frontend");
+  return path.join(FRONTEND_DIR, "dist");
+}
+
 async function resolveAppUrl() {
   if (isProdMode()) {
-    const distDir = path.join(FRONTEND_DIR, "dist");
+    const distDir = frontendDistDir();
     if (!fs.existsSync(path.join(distDir, "index.html"))) {
-      throw new Error("A pasta FRONTEND/dist ainda não existe. Rode o build do frontend antes de abrir o modo de produção.");
+      throw new Error("A tela do caixa não foi encontrada dentro do programa.");
     }
     return serveDist(distDir);
-  }
-
-  const apiUp = await firstResponding(API_CANDIDATES);
-  if (!apiUp) {
-    await setSplashMessage("Preparando o caixa. Na primeira vez isso pode levar um pouco.");
-    startApi();
-    try {
-      await waitUntil(() => firstResponding(API_CANDIDATES), 90000);
-    } catch {
-      throw new Error("A API não respondeu em http://localhost:5260. Confira se o SQL Server Express e o .NET estão instalados.");
-    }
   }
 
   const webUp = await firstResponding(WEB_CANDIDATES);
@@ -607,6 +591,12 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     app.setAppUserModelId("br.com.pedimais.pdv");
+    try {
+      localDb.open(app);
+    } catch (error) {
+      console.error("[banco-local]", error);
+    }
+    ipcMain.handle("pdv-local", (_event, payload) => localDb.handle(payload));
     return boot();
   });
   app.on("window-all-closed", () => app.quit());

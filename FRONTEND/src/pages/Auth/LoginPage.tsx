@@ -63,9 +63,8 @@ export default function LoginPage({
 
   return (
     <AuthLayout
-      title="Bem-vindo de volta!"
-      description="Use seu e-mail e senha para acessar o painel."
-      backdrop="/login-fundo.jpg"
+      title="Entrar no caixa"
+      description="E-mail e senha da sua empresa."
     >
       <EmailField value={email} onChange={setEmail} onEnter={handleLogin} />
       <PasswordField
@@ -90,7 +89,7 @@ export default function LoginPage({
           type="button"
           onClick={onOpenForgotPassword}
           disabled={isSubmitting}
-          className="text-left text-sm font-semibold text-secondary hover:text-hover-secondary disabled:opacity-60 sm:text-right"
+          className="auth-text-link"
         >
           Esqueci minha senha
         </button>
@@ -107,22 +106,12 @@ export default function LoginPage({
         Entrar
       </LoadingButton>
 
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-border-primary pt-4 text-sm text-text-secondary">
-        <a
-          href="/site"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-secondary transition hover:text-hover-secondary"
-        >
+      <div className="auth-quiet-links">
+        <a href="/site" target="_blank" rel="noopener noreferrer">
           Conheça o sistema
         </a>
         <span aria-hidden="true">·</span>
-        <a
-          href="/site/precos"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-semibold text-secondary transition hover:text-hover-secondary"
-        >
+        <a href="/site/precos" target="_blank" rel="noopener noreferrer">
           Ver preços
         </a>
       </div>
