@@ -1,6 +1,6 @@
-# Hórus PDV API .NET
+# API do PDV-Pedimais
 
-API ASP.NET Core do Hórus PDV.
+API ASP.NET Core do PDV-Pedimais, da REFFIX.
 
 ## Stack
 
