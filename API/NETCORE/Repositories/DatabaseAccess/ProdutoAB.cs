@@ -99,7 +99,7 @@ public class ProdutoAB(Connection connection)
         return await command.ExecuteNonQueryAsync() > 0;
     }
 
-    public async Task BaixarEstoqueAsync(IEnumerable<(string ProductCode, decimal Quantity)> items)
+    public async Task BaixarEstoqueAsync(string companyId, IEnumerable<(string ProductCode, decimal Quantity)> items)
     {
         var groupedItems = items
             .GroupBy(item => item.ProductCode.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -123,10 +123,11 @@ public class ProdutoAB(Connection connection)
                     """
                     SELECT Id, ProductName, ProductQnt, ProductUnitPrice
                     FROM Produtos WITH (UPDLOCK, ROWLOCK)
-                    WHERE ProductCode = @ProductCode;
+                    WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
                     """,
                     db,
                     transaction);
+                select.Parameters.AddWithValue("@CompanyId", companyId);
                 select.Parameters.AddWithValue("@ProductCode", item.ProductCode);
                 await using var reader = await select.ExecuteReaderAsync();
                 if (!await reader.ReadAsync())

@@ -47,7 +47,7 @@ public class HistoricoVendasAB(Connection connection)
 
         try
         {
-            var saleNumber = await NextSaleNumberAsync(db, transaction);
+            var saleNumber = await NextSaleNumberAsync(db, transaction, companyId);
             var now = DateTimeOffset.Now;
             var saleId = $"sale-{saleNumber}";
             var customerName = string.IsNullOrWhiteSpace(request.CustomerName) ? "Consumidor" : request.CustomerName.Trim();
@@ -130,12 +130,17 @@ public class HistoricoVendasAB(Connection connection)
         }
     }
 
-    private static async Task<string> NextSaleNumberAsync(SqlConnection db, SqlTransaction transaction)
+    private static async Task<string> NextSaleNumberAsync(SqlConnection db, SqlTransaction transaction, string companyId)
     {
         await using var command = new SqlCommand(
-            "SELECT CONVERT(NVARCHAR(30), ISNULL(MAX(TRY_CONVERT(INT, SaleNumber)), 15039) + 1) FROM Vendas WITH (UPDLOCK, HOLDLOCK);",
+            """
+            SELECT CONVERT(NVARCHAR(30), ISNULL(MAX(TRY_CONVERT(INT, SaleNumber)), 15039) + 1)
+            FROM Vendas WITH (UPDLOCK, HOLDLOCK)
+            WHERE CompanyId = @CompanyId;
+            """,
             db,
             transaction);
+        command.Parameters.AddWithValue("@CompanyId", companyId);
         return Convert.ToString(await command.ExecuteScalarAsync()) ?? "15040";
     }
 
@@ -263,7 +268,8 @@ public class HistoricoVendasAB(Connection connection)
             UPDATE i
                SET UnitPrice = COALESCE(NULLIF(LTRIM(RTRIM(p.ProductSalePrice)), ''), NULLIF(LTRIM(RTRIM(p.ProductUnitPrice)), ''), N'0,00')
               FROM VendaItens i
-              INNER JOIN Produtos p ON p.ProductCode = i.ProductCode
+              INNER JOIN Vendas v ON v.Id = i.VendaId
+              INNER JOIN Produtos p ON p.CompanyId = v.CompanyId AND p.ProductCode = i.ProductCode
              WHERE NULLIF(LTRIM(RTRIM(i.UnitPrice)), '') IS NULL
                 OR REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(i.UnitPrice)), N'R$', N''), N'.', N''), N',', N'.') IN (N'0', N'0.00');
 

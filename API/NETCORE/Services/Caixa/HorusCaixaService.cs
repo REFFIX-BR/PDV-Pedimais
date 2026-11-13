@@ -269,7 +269,7 @@ public class HorusCaixaService(CaixaAB caixaAB)
 
     private CaixaDrawerSummary BuildDrawer(CaixaSessionAD session, string companyId)
     {
-        var movements = caixaAB.ListarMovimentosAsync(session.Id).GetAwaiter().GetResult();
+        var movements = caixaAB.ListarMovimentosAsync(companyId, session.Id).GetAwaiter().GetResult();
         var sessionSales = caixaAB.ListarVendasDaSessaoAsync(companyId, session.OpenedAt, session.ClosedAt, session.OperatorName).GetAwaiter().GetResult();
         var opening = ParseMoney(session.OpeningAmount);
         var supplies = movements.Where(item => item.MovementType == "suprimento").Sum(item => ParseMoney(item.Amount));

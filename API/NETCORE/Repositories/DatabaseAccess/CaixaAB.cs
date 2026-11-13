@@ -92,17 +92,18 @@ public class CaixaAB(Connection connection)
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task<List<CaixaMovimentoAD>> ListarMovimentosAsync(string sessionId)
+    public async Task<List<CaixaMovimentoAD>> ListarMovimentosAsync(string companyId, string sessionId)
     {
         await using var db = await connection.OpenConnectionAsync();
         await using var command = new SqlCommand(
             """
             SELECT Id, SessionId, MovementType, Amount, Reason, OperatorName, CreatedAt
             FROM CaixaMovimentos
-            WHERE SessionId = @SessionId
+            WHERE CompanyId = @CompanyId AND SessionId = @SessionId
             ORDER BY CreatedAt DESC;
             """,
             db);
+        command.Parameters.AddWithValue("@CompanyId", companyId);
         command.Parameters.AddWithValue("@SessionId", sessionId);
         await using var reader = await command.ExecuteReaderAsync();
         var rows = new List<CaixaMovimentoAD>();

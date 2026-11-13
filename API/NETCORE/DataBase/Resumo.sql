@@ -290,7 +290,7 @@ BEGIN
         TotalAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_TotalAmount DEFAULT N'0,00',
         OperatorName NVARCHAR(180) NOT NULL CONSTRAINT DF_Vendas_OperatorName DEFAULT N'Operador',
         SaleDate DATETIMEOFFSET NOT NULL CONSTRAINT DF_Vendas_SaleDate DEFAULT SYSDATETIMEOFFSET(),
-        CONSTRAINT UQ_Vendas_SaleNumber UNIQUE (SaleNumber)
+        CONSTRAINT UQ_Vendas_Company_SaleNumber UNIQUE (CompanyId, SaleNumber)
     );
 END;
 
@@ -514,3 +514,9 @@ BEGIN
     );
     CREATE INDEX IX_DevolucaoItens_DevolucaoId ON DevolucaoItens (DevolucaoId);
 END;
+
+IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE name = N'UQ_Vendas_SaleNumber')
+    ALTER TABLE Vendas DROP CONSTRAINT UQ_Vendas_SaleNumber;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_Vendas_Company_SaleNumber' AND object_id = OBJECT_ID(N'Vendas'))
+    CREATE UNIQUE INDEX UQ_Vendas_Company_SaleNumber ON Vendas (CompanyId, SaleNumber);

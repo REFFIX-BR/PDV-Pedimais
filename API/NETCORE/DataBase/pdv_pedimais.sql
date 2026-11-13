@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS vendas (
     status varchar(20) NOT NULL DEFAULT 'Concluida',
     refundedamount varchar(30) NOT NULL DEFAULT '0,00',
     clientrequestid varchar(80) NULL,
-    CONSTRAINT uq_vendas_salenumber UNIQUE (salenumber)
+    CONSTRAINT uq_vendas_company_salenumber UNIQUE (companyid, salenumber)
 );
 
 CREATE TABLE IF NOT EXISTS vendaitens (
@@ -251,6 +251,8 @@ CREATE INDEX IF NOT EXISTS ix_devolucaoitens_devolucaoid ON devolucaoitens (devo
 
 ALTER TABLE vendas ADD COLUMN IF NOT EXISTS clientrequestid varchar(80);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_vendas_clientrequestid ON vendas (clientrequestid);
+ALTER TABLE vendas DROP CONSTRAINT IF EXISTS uq_vendas_salenumber;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendas_company_salenumber ON vendas (companyid, salenumber);
 
 CREATE TABLE IF NOT EXISTS notasfiscais (
     id varchar(40) PRIMARY KEY,
