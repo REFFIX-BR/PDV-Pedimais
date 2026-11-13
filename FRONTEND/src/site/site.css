@@ -85,6 +85,12 @@ img { display: block; max-width: 100%; }
   font-size: 15px;
 }
 
+.site-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .site-nav-links a:hover { color: var(--blue-deep); }
 
 .site-button {

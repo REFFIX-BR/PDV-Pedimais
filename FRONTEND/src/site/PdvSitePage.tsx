@@ -97,10 +97,10 @@ function PricePage() {
 
   const cta = talkHref ? (
     <a className="site-plan-cta" href={talkHref} target="_blank" rel="noopener noreferrer">
-      Comprar no WhatsApp
+      Continuar no WhatsApp
     </a>
   ) : (
-    <span className="site-plan-cta">Comprar no WhatsApp</span>
+    <span className="site-plan-cta">Continuar no WhatsApp</span>
   );
 
   return (
@@ -272,11 +272,18 @@ export default function PdvSitePage() {
             </a>
             <a href={`${site.homeHref}#recursos`}>Recursos</a>
           </nav>
-          {site.onCashier ? (
-            <a className="site-button site-button-primary" href="/">
-              Entrar no painel
-            </a>
-          ) : null}
+          <div className="site-nav-actions">
+            {isPrice ? null : (
+              <a className="site-button site-button-primary" href={site.priceHref}>
+                Quero o sistema
+              </a>
+            )}
+            {site.onCashier ? (
+              <a className="site-button site-button-ghost" href="/">
+                Entrar no painel
+              </a>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -300,11 +307,11 @@ export default function PdvSitePage() {
                 está logado.
               </p>
               <div className="site-actions">
-                <a className="site-button site-button-primary" href="#telas">
-                  Ver o sistema
+                <a className="site-button site-button-primary" href={site.priceHref}>
+                  Quero o sistema
                 </a>
-                <a className="site-button site-button-ghost" href="#nota">
-                  Nota fiscal
+                <a className="site-button site-button-ghost" href="#telas">
+                  Ver o sistema
                 </a>
               </div>
             </div>
@@ -550,11 +557,9 @@ export default function PdvSitePage() {
                 abre a loja, atende, emite a nota e fecha a gaveta no fim do turno.
               </p>
             </div>
-            {site.onCashier ? (
-              <a className="site-button site-button-primary" href="/">
-                Entrar no painel
-              </a>
-            ) : null}
+            <a className="site-button site-button-primary" href={site.priceHref}>
+              Quero o sistema
+            </a>
           </div>
         </section>
           </>
