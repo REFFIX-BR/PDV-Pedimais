@@ -38,7 +38,7 @@ const PLAN_CENTS = 17000;
 const NOTE_CENTS = 10;
 const NOTES_MAX = 50000;
 const NOTE_STEPS = [0, 100, 200, 500, 1000];
-const WHATSAPP_VENDAS = "";
+const WHATSAPP_VENDAS = "24992995744";
 const PLAN_ITEMS = [
   "Frente de caixa, cupom e pagamento",
   "NFC-e e NF-e, a R$ 0,10 por nota emitida",
@@ -55,8 +55,15 @@ function reais(cents: number) {
   return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function whatsappDigits(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 function whatsappLink(notes: number, totalCents: number) {
-  const digits = WHATSAPP_VENDAS.replace(/\D/g, "");
+  const digits = whatsappDigits(WHATSAPP_VENDAS);
   if (digits.length < 12) return "";
 
   const notesLine =
