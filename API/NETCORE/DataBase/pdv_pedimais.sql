@@ -185,6 +185,7 @@ CREATE TABLE IF NOT EXISTS vendas (
     saledate timestamptz NOT NULL DEFAULT now(),
     status varchar(20) NOT NULL DEFAULT 'Concluida',
     refundedamount varchar(30) NOT NULL DEFAULT '0,00',
+    clientrequestid varchar(80) NULL,
     CONSTRAINT uq_vendas_salenumber UNIQUE (salenumber)
 );
 
@@ -247,3 +248,45 @@ CREATE TABLE IF NOT EXISTS devolucaoitens (
 );
 
 CREATE INDEX IF NOT EXISTS ix_devolucaoitens_devolucaoid ON devolucaoitens (devolucaoid);
+
+ALTER TABLE vendas ADD COLUMN IF NOT EXISTS clientrequestid varchar(80);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_vendas_clientrequestid ON vendas (clientrequestid);
+
+CREATE TABLE IF NOT EXISTS notasfiscais (
+    id varchar(40) PRIMARY KEY,
+    companyid varchar(40) NOT NULL,
+    vendaid varchar(40) NULL REFERENCES vendas (id) ON DELETE SET NULL,
+    salenumber varchar(30) NOT NULL DEFAULT '',
+    kind varchar(10) NOT NULL,
+    series varchar(10) NOT NULL DEFAULT '',
+    number varchar(20) NOT NULL DEFAULT '',
+    accesskey varchar(44) NOT NULL DEFAULT '',
+    protocol varchar(40) NOT NULL DEFAULT '',
+    status varchar(20) NOT NULL DEFAULT 'pendente',
+    amount varchar(30) NOT NULL DEFAULT '0,00',
+    customerdocument varchar(30) NOT NULL DEFAULT '',
+    issuedat timestamptz NULL,
+    createdat timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_notasfiscais_company_issued ON notasfiscais (companyid, issuedat);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_notasfiscais_accesskey ON notasfiscais (accesskey) WHERE accesskey <> '';
+
+CREATE TABLE IF NOT EXISTS pagamentosintegrados (
+    id varchar(40) PRIMARY KEY,
+    companyid varchar(40) NOT NULL,
+    vendaid varchar(40) NULL REFERENCES vendas (id) ON DELETE SET NULL,
+    salenumber varchar(30) NOT NULL DEFAULT '',
+    method varchar(20) NOT NULL,
+    amount varchar(30) NOT NULL,
+    status varchar(20) NOT NULL DEFAULT 'pendente',
+    brand varchar(40) NOT NULL DEFAULT '',
+    acquirer varchar(60) NOT NULL DEFAULT '',
+    nsu varchar(40) NOT NULL DEFAULT '',
+    authorizationcode varchar(40) NOT NULL DEFAULT '',
+    installments integer NOT NULL DEFAULT 1,
+    createdat timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_pagamentosintegrados_company ON pagamentosintegrados (companyid, createdat);
+CREATE INDEX IF NOT EXISTS ix_pagamentosintegrados_venda ON pagamentosintegrados (vendaid);
