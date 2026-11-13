@@ -5,7 +5,6 @@
  */
 using HORUSPDV_API.Repositories.DataAccess;
 using HORUSPDV_API.Services.Security;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -22,7 +21,8 @@ public class EmpresaAB(Connection connection, HorusSecretProtector secretProtect
             SELECT FantasyName, CorporateName, Cnpj, StateRegistration, Website, Email, SacPhone,
                    Phone, Mobile, Cep, Address, Number, Neighborhood, City, Uf, Complement,
                    EmailSmtpEnabled, EmailSmtpHost, EmailSmtpPort, EmailSmtpEnableSsl, EmailSmtpUser,
-                   EmailSmtpPassword, EmailSmtpFromEmail, EmailSmtpFromName, EmailSmtpReplyTo
+                   EmailSmtpPassword, EmailSmtpFromEmail, EmailSmtpFromName, EmailSmtpReplyTo,
+                   PlanExpiresAt
             FROM Empresas
             WHERE Id = @Id;
             """,
@@ -40,52 +40,45 @@ public class EmpresaAB(Connection connection, HorusSecretProtector secretProtect
         await using var db = await connection.OpenConnectionAsync();
         await using var command = new SqlCommand(
             """
-            IF EXISTS (SELECT 1 FROM Empresas WHERE Id = @Id)
-            BEGIN
-                UPDATE Empresas
-                   SET FantasyName = @FantasyName,
-                       CorporateName = @CorporateName,
-                       Cnpj = @Cnpj,
-                       StateRegistration = @StateRegistration,
-                       Website = @Website,
-                       Email = @Email,
-                       SacPhone = @SacPhone,
-                       Phone = @Phone,
-                       Mobile = @Mobile,
-                       Cep = @Cep,
-                       Address = @Address,
-                       Number = @Number,
-                       Neighborhood = @Neighborhood,
-                       City = @City,
-                       Uf = @Uf,
-                       Complement = @Complement,
-                       EmailSmtpEnabled = @EmailSmtpEnabled,
-                       EmailSmtpHost = @EmailSmtpHost,
-                       EmailSmtpPort = @EmailSmtpPort,
-                       EmailSmtpEnableSsl = @EmailSmtpEnableSsl,
-                       EmailSmtpUser = @EmailSmtpUser,
-                       EmailSmtpPassword = CASE
-                           WHEN @EmailSmtpPassword = N'' THEN EmailSmtpPassword
-                           ELSE @EmailSmtpPassword
-                       END,
-                       EmailSmtpFromEmail = @EmailSmtpFromEmail,
-                       EmailSmtpFromName = @EmailSmtpFromName,
-                       EmailSmtpReplyTo = @EmailSmtpReplyTo
-                 WHERE Id = @Id;
-            END
-            ELSE
-            BEGIN
-                INSERT INTO Empresas
-                    (Id, FantasyName, CorporateName, Cnpj, StateRegistration, Website, Email, SacPhone,
-                     Phone, Mobile, Cep, Address, Number, Neighborhood, City, Uf, Complement,
-                     EmailSmtpEnabled, EmailSmtpHost, EmailSmtpPort, EmailSmtpEnableSsl, EmailSmtpUser,
-                     EmailSmtpPassword, EmailSmtpFromEmail, EmailSmtpFromName, EmailSmtpReplyTo)
-                VALUES
-                    (@Id, @FantasyName, @CorporateName, @Cnpj, @StateRegistration, @Website,
-                     @Email, @SacPhone, @Phone, @Mobile, @Cep, @Address, @Number, @Neighborhood, @City, @Uf, @Complement,
-                     @EmailSmtpEnabled, @EmailSmtpHost, @EmailSmtpPort, @EmailSmtpEnableSsl, @EmailSmtpUser,
-                     @EmailSmtpPassword, @EmailSmtpFromEmail, @EmailSmtpFromName, @EmailSmtpReplyTo);
-            END;
+            INSERT INTO Empresas
+                (Id, FantasyName, CorporateName, Cnpj, StateRegistration, Website, Email, SacPhone,
+                 Phone, Mobile, Cep, Address, Number, Neighborhood, City, Uf, Complement,
+                 EmailSmtpEnabled, EmailSmtpHost, EmailSmtpPort, EmailSmtpEnableSsl, EmailSmtpUser,
+                 EmailSmtpPassword, EmailSmtpFromEmail, EmailSmtpFromName, EmailSmtpReplyTo)
+            VALUES
+                (@Id, @FantasyName, @CorporateName, @Cnpj, @StateRegistration, @Website,
+                 @Email, @SacPhone, @Phone, @Mobile, @Cep, @Address, @Number, @Neighborhood, @City, @Uf, @Complement,
+                 @EmailSmtpEnabled, @EmailSmtpHost, @EmailSmtpPort, @EmailSmtpEnableSsl, @EmailSmtpUser,
+                 @EmailSmtpPassword, @EmailSmtpFromEmail, @EmailSmtpFromName, @EmailSmtpReplyTo)
+            ON CONFLICT (Id) DO UPDATE SET
+                FantasyName = EXCLUDED.FantasyName,
+                CorporateName = EXCLUDED.CorporateName,
+                Cnpj = EXCLUDED.Cnpj,
+                StateRegistration = EXCLUDED.StateRegistration,
+                Website = EXCLUDED.Website,
+                Email = EXCLUDED.Email,
+                SacPhone = EXCLUDED.SacPhone,
+                Phone = EXCLUDED.Phone,
+                Mobile = EXCLUDED.Mobile,
+                Cep = EXCLUDED.Cep,
+                Address = EXCLUDED.Address,
+                Number = EXCLUDED.Number,
+                Neighborhood = EXCLUDED.Neighborhood,
+                City = EXCLUDED.City,
+                Uf = EXCLUDED.Uf,
+                Complement = EXCLUDED.Complement,
+                EmailSmtpEnabled = EXCLUDED.EmailSmtpEnabled,
+                EmailSmtpHost = EXCLUDED.EmailSmtpHost,
+                EmailSmtpPort = EXCLUDED.EmailSmtpPort,
+                EmailSmtpEnableSsl = EXCLUDED.EmailSmtpEnableSsl,
+                EmailSmtpUser = EXCLUDED.EmailSmtpUser,
+                EmailSmtpPassword = CASE
+                    WHEN EXCLUDED.EmailSmtpPassword = '' THEN Empresas.EmailSmtpPassword
+                    ELSE EXCLUDED.EmailSmtpPassword
+                END,
+                EmailSmtpFromEmail = EXCLUDED.EmailSmtpFromEmail,
+                EmailSmtpFromName = EXCLUDED.EmailSmtpFromName,
+                EmailSmtpReplyTo = EXCLUDED.EmailSmtpReplyTo;
             """,
             db);
         command.Parameters.AddWithValue("@Id", companyId);
@@ -153,7 +146,8 @@ public class EmpresaAB(Connection connection, HorusSecretProtector secretProtect
         EmailSmtpPassword = UnprotectSecret(ReadString(source, "EmailSmtpPassword")),
         EmailSmtpFromEmail = ReadString(source, "EmailSmtpFromEmail"),
         EmailSmtpFromName = ReadString(source, "EmailSmtpFromName"),
-        EmailSmtpReplyTo = ReadString(source, "EmailSmtpReplyTo")
+        EmailSmtpReplyTo = ReadString(source, "EmailSmtpReplyTo"),
+        PlanExpiresAt = ReadDate(source, "PlanExpiresAt")
     };
 
     private static string ReadString(SqlDataReader reader, string name)
@@ -172,6 +166,12 @@ public class EmpresaAB(Connection connection, HorusSecretProtector secretProtect
     {
         var ordinal = reader.GetOrdinal(name);
         return reader.IsDBNull(ordinal) ? 0 : reader.GetInt32(ordinal);
+    }
+
+    private static DateTimeOffset? ReadDate(SqlDataReader reader, string name)
+    {
+        var ordinal = reader.GetOrdinal(name);
+        return reader.IsDBNull(ordinal) ? null : reader.GetDateTimeOffset(ordinal);
     }
 
     private string UnprotectSecret(string value)

@@ -33,4 +33,5 @@ public class EmpresaRequest
     public string EmailSmtpFromEmail { get; set; } = string.Empty;
     public string EmailSmtpFromName { get; set; } = string.Empty;
     public string EmailSmtpReplyTo { get; set; } = string.Empty;
+    public string PlanExpiresAt { get; set; } = string.Empty;
 }

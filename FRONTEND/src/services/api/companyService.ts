@@ -35,6 +35,7 @@ export type CompanyDto = {
   emailSmtpFromEmail: string;
   emailSmtpFromName: string;
   emailSmtpReplyTo: string;
+  planExpiresAt?: string | null;
 };
 
 export const companyService = {

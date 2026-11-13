@@ -9,12 +9,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+        <PackageReference Include="Npgsql" Version="8.0.6" />
         <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.5" />
     </ItemGroup>
 
     <ItemGroup>
-        <Content Include="DataBase\Resumo.sql" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="DataBase\pdv_pedimais.sql" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

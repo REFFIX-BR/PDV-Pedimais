@@ -19,6 +19,7 @@ import {
   PackageCheck,
   Receipt,
   Repeat2,
+  Ticket,
   ShoppingCart,
   Store,
   Truck,
@@ -52,6 +53,7 @@ export type PageKey =
   | "suprimento"
   | "compras"
   | "devolucoes"
+  | "cupons"
   | "crm-fidelidade"
   | "omnichannel"
   | "conta-de-usuario"
@@ -152,7 +154,8 @@ export default function AppSidebar({
     allow("cadastro-cliente") ||
     allow("cadastro-fornecedor") ||
     allow("cadastro-produto") ||
-    allow("conta-de-usuario");
+    allow("conta-de-usuario") ||
+    allow("cupons");
   const showOperacao =
     allow("historico-vendas") || allow("relatorios") || allow("vendas");
   const showGestao =
@@ -253,6 +256,15 @@ export default function AppSidebar({
                   active={activePage === "cadastro-produto"}
                   collapsed={collapsed}
                   onClick={() => handleChangePage("cadastro-produto")}
+                />
+              )}
+              {allow("cupons") && (
+                <SidebarItem
+                  icon={<Ticket size={20} />}
+                  label="Cupons"
+                  active={activePage === "cupons"}
+                  collapsed={collapsed}
+                  onClick={() => handleChangePage("cupons")}
                 />
               )}
               {allow("conta-de-usuario") && (

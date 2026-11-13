@@ -20,6 +20,8 @@ export type AuthenticatedUser = {
   createdAt: string;
   lastLoginAt: string;
   mustChangePassword: boolean;
+  planExpiresAt?: string | null;
+  planBlocked?: boolean;
 };
 
 export function getAuthRemember() {

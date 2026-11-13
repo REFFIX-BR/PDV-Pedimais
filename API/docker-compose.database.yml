@@ -1,0 +1,11 @@
+# Liga a API na rede do Postgres quando ela não é a mesma do Traefik.
+
+services:
+  api:
+    networks:
+      - database
+
+networks:
+  database:
+    external: true
+    name: ${POSTGRES_NETWORK}

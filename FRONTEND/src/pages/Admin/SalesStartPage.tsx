@@ -22,6 +22,7 @@ import ReceiptPreviewModal, {
 import { companyService, type CompanyDto } from "@/services/api/companyService";
 import { productService, reduceCachedProductStock } from "@/services/api/productService";
 import { OUTBOX_SENT_EVENT } from "@/services/offline/outbox";
+import { couponService, type CouponKind } from "@/services/api/couponService";
 import { salesHistoryService } from "@/services/api/salesHistoryService";
 import { readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { getPrintPreviewEnabled } from "@/utils/pdvPreferences";
@@ -249,6 +250,15 @@ export default function SalesStartPage({
   });
   const [cpfNota, setCpfNota] = useState(() => savedSale?.cpfNota ?? "");
   const [cashGiven, setCashGiven] = useState(() => savedSale?.cashGiven ?? "");
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    kind: CouponKind;
+    amount: number;
+    description: string;
+  } | null>(null);
   usePersistFormDraft("venda", {
     productSearch,
     selectedProductId,
@@ -302,8 +312,17 @@ export default function SalesStartPage({
     [cart],
   );
 
+  const couponDiscount = useMemo(() => {
+    if (!appliedCoupon || subtotal <= 0) return 0;
+    const raw =
+      appliedCoupon.kind === "percentual"
+        ? (subtotal * appliedCoupon.amount) / 100
+        : appliedCoupon.amount;
+    return Math.min(subtotal, Math.max(0, Math.round(raw * 100) / 100));
+  }, [appliedCoupon, subtotal]);
+  const payable = Math.max(0, Math.round((subtotal - couponDiscount) * 100) / 100);
   const cashGivenValue = parseMoneyBr(cashGiven || "0");
-  const changeValue = paymentType === "dinheiro" ? Math.max(0, cashGivenValue - subtotal) : 0;
+  const changeValue = paymentType === "dinheiro" ? Math.max(0, cashGivenValue - payable) : 0;
 
   const activeProductName =
     cart.length > 0 ? cart[cart.length - 1].name : selectedProduct?.name ?? "";
@@ -527,6 +546,8 @@ export default function SalesStartPage({
     setCpfNota("");
     setCashGiven("");
     setCheckoutOpen(false);
+    setAppliedCoupon(null);
+    setCouponInput("");
     Toast.info("Venda cancelada.");
   }, [cart.length, statusDialog]);
 
@@ -620,8 +641,32 @@ export default function SalesStartPage({
     Toast.info(`Item cancelado: ${last.name}.`);
   }, [cart]);
 
+  const applyCoupon = async () => {
+    if (cart.length === 0) {
+      Toast.error("Adicione um item antes de usar o cupom.");
+      return;
+    }
+    setCouponChecking(true);
+    try {
+      const applied = await couponService.validate(couponInput, formatMoneyBr(subtotal));
+      setAppliedCoupon({
+        code: applied.code,
+        kind: applied.kind,
+        amount: parseMoneyBr(applied.amount),
+        description: applied.description,
+      });
+      setCouponOpen(false);
+      setCouponInput("");
+      Toast.success(`Cupom ${applied.code} aplicado. Desconto de R$ ${applied.discount}.`);
+    } catch (error) {
+      Toast.error(error instanceof Error ? error.message : "Cupom não encontrado.");
+    } finally {
+      setCouponChecking(false);
+    }
+  };
+
   const confirmPayment = async () => {
-    if (paymentType === "dinheiro" && cashGivenValue < subtotal) {
+    if (paymentType === "dinheiro" && cashGivenValue < payable) {
       Toast.error("Valor recebido menor que total.");
       return;
     }
@@ -639,7 +684,9 @@ export default function SalesStartPage({
         customerName: "Consumidor",
         customerCpf: cpfNota || "-",
         paymentType,
-        totalAmount: formatMoneyBr(subtotal),
+        totalAmount: formatMoneyBr(payable),
+        subtotalAmount: formatMoneyBr(subtotal),
+        couponCode: appliedCoupon?.code ?? "",
         operatorName,
         items: cart.map((item) => ({
           productCode: item.code,
@@ -671,8 +718,10 @@ export default function SalesStartPage({
         paymentType,
         paymentLabel: getPaymentLabel(paymentType),
         operatorName,
-        subtotal,
-        cashGiven: paymentType === "dinheiro" ? cashGivenValue : subtotal,
+        subtotal: payable,
+        couponCode: appliedCoupon?.code,
+        couponDiscount: couponDiscount > 0 ? couponDiscount : undefined,
+        cashGiven: paymentType === "dinheiro" ? cashGivenValue : payable,
         change: paymentType === "dinheiro" ? changeValue : 0,
         items: cart.map((item) => ({
           ...item,
@@ -699,6 +748,8 @@ export default function SalesStartPage({
     }
 
     setCart([]);
+    setAppliedCoupon(null);
+    setCouponInput("");
     setSelectedProductId("");
     setProductSearch("");
     setShowProductOptions(false);
@@ -711,6 +762,13 @@ export default function SalesStartPage({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (couponOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setCouponOpen(false);
+        }
+        return;
+      }
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       const isInput = target?.tagName === "INPUT";
@@ -741,6 +799,10 @@ export default function SalesStartPage({
       if (event.key === "F4") {
         event.preventDefault();
         if (!checkoutOpen) focusQuantity();
+      }
+      if (event.key === "F6") {
+        event.preventDefault();
+        if (!checkoutOpen && !lineAdjustment) setCouponOpen(true);
       }
       if (event.key === "F5") {
         event.preventDefault();
@@ -781,6 +843,7 @@ export default function SalesStartPage({
     cancelLastItem,
     cancelSale,
     checkoutOpen,
+    couponOpen,
     focusProductSearch,
     focusQuantity,
     lineAdjustment,
@@ -1177,18 +1240,41 @@ export default function SalesStartPage({
                 <div className="bg-bg-gray-theme px-3 py-2 text-right text-sm font-semibold uppercase text-text-primary">
                   SUB TOTAL:
                 </div>
-                <div className="bg-accent px-3 py-2 text-right font-display text-3xl font-bold text-text-light md:text-4xl">
+                <div className="bg-bg-gray-theme px-3 py-2 text-right font-display text-2xl font-bold text-text-primary">
                   R$ {formatMoneyBr(subtotal)}
+                </div>
+                {appliedCoupon && couponDiscount > 0 ? (
+                  <>
+                    <div className="bg-bg-gray-theme px-3 py-1 text-right text-sm font-semibold uppercase text-text-primary">
+                      CUPOM {appliedCoupon.code}:
+                    </div>
+                    <div className="bg-bg-gray-theme px-3 py-1 text-right text-lg font-bold text-success">
+                      - R$ {formatMoneyBr(couponDiscount)}
+                    </div>
+                  </>
+                ) : null}
+                <div className="bg-bg-gray-theme px-3 py-2 text-right text-sm font-semibold uppercase text-text-primary">
+                  A PAGAR:
+                </div>
+                <div className="bg-accent px-3 py-2 text-right font-display text-3xl font-bold text-text-light md:text-4xl">
+                  R$ {formatMoneyBr(payable)}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 border-t border-border-primary px-3 py-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 border-t border-border-primary px-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
                 <button
                   type="button"
                   onClick={cancelSale}
                   className="btn-cancel h-11 w-full rounded-xl"
                 >
                   ✖ CANCELAR (F8)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCouponOpen(true)}
+                  className="inline-flex h-11 w-full items-center justify-center rounded-xl border border-border-secondary px-4 py-2 text-sm font-semibold text-text-secondary transition hover:bg-hover-light hover:text-text-primary"
+                >
+                  CUPOM (F6)
                 </button>
                 <button
                   type="button"
@@ -1228,6 +1314,7 @@ export default function SalesStartPage({
                 { key: "F2", label: "Desconto no item", run: () => openLineAdjustment("discount") },
                 { key: "F3", label: "Acréscimo no item", run: () => openLineAdjustment("surcharge") },
                 { key: "F5", label: "Cancelar item", run: cancelLastItem },
+                { key: "F6", label: "Cupom", run: () => setCouponOpen(true) },
                 { key: "F8", label: "Cancelar cupom", run: () => void cancelSale() },
                 { key: "F12", label: "Totalizar cupom", run: () => void openPayment() },
               ].map((shortcut) => (
@@ -1248,6 +1335,51 @@ export default function SalesStartPage({
           </aside>
         </main>
       </div>
+
+      {couponOpen && (
+        <div className="fixed inset-0 z-layer-modal flex items-center justify-center bg-black/45 p-4">
+          <form
+            className="w-full max-w-sm rounded-2xl border border-border-primary bg-bg-light p-4 text-text-primary"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void applyCoupon();
+            }}
+          >
+            <h2 className="text-lg font-semibold">Cupom</h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Digite o código cadastrado pelo administrador.
+            </p>
+            <input
+              autoFocus
+              value={couponInput}
+              onChange={(event) => setCouponInput(event.target.value.toUpperCase())}
+              placeholder="PAO10"
+              className="input-field mt-3 w-full uppercase"
+            />
+            {appliedCoupon ? (
+              <button
+                type="button"
+                className="mt-3 text-sm font-semibold text-rose-700"
+                onClick={() => {
+                  setAppliedCoupon(null);
+                  setCouponOpen(false);
+                  Toast.info("Cupom removido.");
+                }}
+              >
+                Remover {appliedCoupon.code}
+              </button>
+            ) : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setCouponOpen(false)} className="btn-cancel">
+                Cancelar
+              </button>
+              <button type="submit" className="btn-success" disabled={couponChecking}>
+                {couponChecking ? "Conferindo" : "OK"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {lineAdjustment && (
         <div className="fixed inset-0 z-layer-modal flex items-center justify-center bg-black/45 p-4">
@@ -1332,8 +1464,18 @@ export default function SalesStartPage({
 
               <div className="rounded-xl border border-border-primary bg-bg-primary p-3 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Total</span>
+                  <span className="text-text-secondary">Subtotal</span>
                   <span className="font-semibold text-text-primary">R$ {formatMoneyBr(subtotal)}</span>
+                </div>
+                {appliedCoupon && couponDiscount > 0 ? (
+                  <div className="mt-1 flex items-center justify-between">
+                    <span className="text-text-secondary">Cupom {appliedCoupon.code}</span>
+                    <span className="font-semibold text-success">- R$ {formatMoneyBr(couponDiscount)}</span>
+                  </div>
+                ) : null}
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-text-secondary">Total</span>
+                  <span className="font-semibold text-text-primary">R$ {formatMoneyBr(payable)}</span>
                 </div>
                 {paymentType === "dinheiro" && (
                   <div className="mt-1 flex items-center justify-between">

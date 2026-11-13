@@ -34,7 +34,7 @@ let updateInstallStarted = false;
 let updateCheckRunning = false;
 
 const DEFAULT_CONNECTION =
-  "Server=.\\SQLEXPRESS;Database=HorusPdv;Integrated Security=True;TrustServerCertificate=True;Encrypt=True;MultipleActiveResultSets=True";
+  "Host=127.0.0.1;Port=5432;Database=pdv_pedimais;Username=postgres;Password=pdvpedimais";
 
 function isProdMode() {
   return app.isPackaged || process.argv.includes("--prod");

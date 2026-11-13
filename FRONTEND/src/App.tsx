@@ -7,6 +7,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Menu } from "lucide-react";
 import DesktopUpdateNotice from "@/components/Desktop/DesktopUpdateNotice";
 import AppSidebar, { type PageKey } from "@/components/AppSidebar/AppSidebar";
+import PlanExpiredModal from "@/components/Plan/PlanExpiredModal";
+import LowStockBell from "@/components/Stock/LowStockBell";
 import LoadingBar from "@/components/Loading/LoadingBar";
 import SplashScreen from "@/components/Loading/SplashScreen";
 import GuidedTour from "@/components/Tour/GuidedTour";
@@ -42,6 +44,7 @@ const ProductRegisterPage = lazy(
 );
 const SalesHistoryPage = lazy(() => import("@/pages/Admin/SalesHistoryPage"));
 const SalesStartPage = lazy(() => import("@/pages/Admin/SalesStartPage"));
+const CouponsPage = lazy(() => import("@/pages/Admin/CouponsPage"));
 const ReportsPage = lazy(() => import("@/pages/Admin/ReportsPage"));
 const UserAccountsPage = lazy(() => import("@/pages/Admin/UserAccountsPage"));
 const FiscalPage = lazy(() => import("@/pages/Admin/FiscalPage"));
@@ -72,6 +75,8 @@ type CurrentUser = {
   role: string;
   permission: string;
   avatarUrl: string | null;
+  planExpiresAt: string;
+  planBlocked: boolean;
 };
 
 type ThemeMode = "light" | "dark";
@@ -99,6 +104,8 @@ function toCurrentUser(user: AuthenticatedUser): CurrentUser {
     phone: user.phone,
     role: user.role,
     permission: formatRole(user.role),
+    planExpiresAt: user.planExpiresAt || "",
+    planBlocked: Boolean(user.planBlocked),
     avatarUrl:
       typeof window !== "undefined"
         ? window.localStorage.getItem(PROFILE_AVATAR_STORAGE_KEY)
@@ -131,6 +138,7 @@ export default function App() {
       "suprimento",
       "compras",
       "devolucoes",
+      "cupons",
       "crm-fidelidade",
       "omnichannel",
       "conta-de-usuario",
@@ -167,7 +175,7 @@ export default function App() {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
     if (params.get("resetToken") || params.get("token")) return false;
-    return !getStoredAuthUser();
+    return true;
   });
 
   const [currentUser, setCurrentUser] = useState<CurrentUser>(() => {
@@ -180,6 +188,8 @@ export default function App() {
       phone: storedUser?.phone || "",
       role: storedUser?.role || "",
       permission: formatRole(storedUser?.role || ""),
+      planExpiresAt: storedUser?.planExpiresAt || "",
+      planBlocked: Boolean(storedUser?.planBlocked),
       avatarUrl:
         typeof window !== "undefined"
           ? window.localStorage.getItem(PROFILE_AVATAR_STORAGE_KEY)
@@ -216,6 +226,7 @@ export default function App() {
     suprimento: "Suprimento",
     compras: "Compras e Reposição",
     devolucoes: "Trocas e Devoluções",
+    cupons: "Cupons",
     "crm-fidelidade": "CRM e Fidelidade",
     omnichannel: "Omnichannel e Integrações",
     "conta-de-usuario": "Contas de Usuários",
@@ -249,6 +260,8 @@ export default function App() {
         return PurchasesPage;
       case "devolucoes":
         return ReturnsPage;
+      case "cupons":
+        return CouponsPage;
       case "crm-fidelidade":
         return CrmLoyaltyPage;
       case "omnichannel":
@@ -620,6 +633,30 @@ export default function App() {
     document.title = "PDV-Pedimais";
   }, [activePage, isStandalonePos]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const refreshPlan = () => {
+      void authService
+        .me()
+        .then((session) => {
+          if (!session?.user) return;
+          setAuthSession(session.user, getAuthRemember(), session.token);
+          setCurrentUser(toCurrentUser(session.user));
+        })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshPlan, 120000);
+    return () => window.clearInterval(timer);
+  }, [isAuthenticated]);
+
+  const planModal = currentUser.planBlocked ? (
+    <PlanExpiredModal
+      expiresAt={currentUser.planExpiresAt}
+      contactName={currentUser.name}
+      onLogout={handleLogout}
+    />
+  ) : null;
+
   if (isCheckingAuth) {
     return <SplashScreen message="Carregando o sistema" />;
   }
@@ -695,6 +732,7 @@ export default function App() {
             }}
           />
         </Suspense>
+        {planModal}
       </div>
     );
   }
@@ -805,6 +843,7 @@ export default function App() {
         </main>
       </Suspense>
       {statusDialog.Dialog}
+      {planModal}
     </div>
   );
 }

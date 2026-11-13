@@ -3,7 +3,6 @@
  * Objetivo: consolidar indicadores reais da home a partir das tabelas operacionais.
  * Entradas esperadas: recebe conexão configurada e retorna dados agregados para o dashboard.
  */
-using Microsoft.Data.SqlClient;
 using System.Globalization;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;

@@ -135,7 +135,8 @@ BEGIN
         EmailSmtpPassword NVARCHAR(500) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpPassword DEFAULT N'',
         EmailSmtpFromEmail NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpFromEmail DEFAULT N'',
         EmailSmtpFromName NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpFromName DEFAULT N'',
-        EmailSmtpReplyTo NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpReplyTo DEFAULT N''
+        EmailSmtpReplyTo NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpReplyTo DEFAULT N'',
+        PlanExpiresAt DATETIMEOFFSET NULL
     );
 END;
 
@@ -150,6 +151,11 @@ BEGIN
     ALTER TABLE Empresas ADD EmailSmtpFromEmail NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpFromEmail DEFAULT N'';
     ALTER TABLE Empresas ADD EmailSmtpFromName NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpFromName DEFAULT N'';
     ALTER TABLE Empresas ADD EmailSmtpReplyTo NVARCHAR(180) NOT NULL CONSTRAINT DF_Empresas_EmailSmtpReplyTo DEFAULT N'';
+END;
+
+IF COL_LENGTH(N'Empresas', N'PlanExpiresAt') IS NULL
+BEGIN
+    ALTER TABLE Empresas ADD PlanExpiresAt DATETIMEOFFSET NULL;
 END;
 
 GO
@@ -520,3 +526,19 @@ IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE name = N'UQ_Vendas_SaleNumber
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UQ_Vendas_Company_SaleNumber' AND object_id = OBJECT_ID(N'Vendas'))
     CREATE UNIQUE INDEX UQ_Vendas_Company_SaleNumber ON Vendas (CompanyId, SaleNumber);
+
+IF OBJECT_ID(N'Cupons', N'U') IS NULL
+BEGIN
+    CREATE TABLE Cupons
+    (
+        Id NVARCHAR(40) NOT NULL CONSTRAINT PK_Cupons PRIMARY KEY,
+        CompanyId NVARCHAR(40) NOT NULL,
+        Code NVARCHAR(40) NOT NULL,
+        Description NVARCHAR(180) NOT NULL CONSTRAINT DF_Cupons_Description DEFAULT N'',
+        Kind NVARCHAR(20) NOT NULL,
+        Amount NVARCHAR(30) NOT NULL,
+        Active BIT NOT NULL CONSTRAINT DF_Cupons_Active DEFAULT 1,
+        CreatedAt DATETIMEOFFSET NOT NULL CONSTRAINT DF_Cupons_CreatedAt DEFAULT SYSUTCDATETIME()
+    );
+    CREATE UNIQUE INDEX UQ_Cupons_Company_Code ON Cupons (CompanyId, Code);
+END;

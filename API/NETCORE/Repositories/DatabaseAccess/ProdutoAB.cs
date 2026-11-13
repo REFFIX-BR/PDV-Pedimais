@@ -4,7 +4,6 @@
  * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
  */
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -54,32 +53,26 @@ public class ProdutoAB(Connection connection)
     {
         var supplierId = await ResolveSupplierIdAsync(companyId, product.ProductSupplier);
         const string sql = """
-            IF EXISTS (SELECT 1 FROM Produtos WHERE Id = @Id AND CompanyId = @CompanyId)
-            BEGIN
-                UPDATE Produtos
-                   SET ProductImageUrl = @ProductImageUrl,
-                       ProductImageName = @ProductImageName,
-                       ProductName = @ProductName,
-                       ProductCode = @ProductCode,
-                       ProductSupplier = @ProductSupplier,
-                       SupplierId = @SupplierId,
-                       ProductDescription = @ProductDescription,
-                       ProductUnit = @ProductUnit,
-                       ProductQnt = @ProductQnt,
-                       ProductUnitPrice = @ProductUnitPrice,
-                       ProductSalePrice = @ProductSalePrice,
-                       TotalPriceOnProduct = @TotalPriceOnProduct
-                 WHERE Id = @Id AND CompanyId = @CompanyId;
-            END
-            ELSE
-            BEGIN
-                INSERT INTO Produtos
-                    (Id, CompanyId, ProductImageUrl, ProductImageName, ProductName, ProductCode, ProductSupplier, SupplierId,
-                     ProductDescription, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct)
-                VALUES
-                    (@Id, @CompanyId, @ProductImageUrl, @ProductImageName, @ProductName, @ProductCode, @ProductSupplier, @SupplierId,
-                     @ProductDescription, @ProductUnit, @ProductQnt, @ProductUnitPrice, @ProductSalePrice, @TotalPriceOnProduct);
-            END;
+            INSERT INTO Produtos
+                (Id, CompanyId, ProductImageUrl, ProductImageName, ProductName, ProductCode, ProductSupplier, SupplierId,
+                 ProductDescription, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct)
+            VALUES
+                (@Id, @CompanyId, @ProductImageUrl, @ProductImageName, @ProductName, @ProductCode, @ProductSupplier, @SupplierId,
+                 @ProductDescription, @ProductUnit, @ProductQnt, @ProductUnitPrice, @ProductSalePrice, @TotalPriceOnProduct)
+            ON CONFLICT (Id) DO UPDATE SET
+                ProductImageUrl = EXCLUDED.ProductImageUrl,
+                ProductImageName = EXCLUDED.ProductImageName,
+                ProductName = EXCLUDED.ProductName,
+                ProductCode = EXCLUDED.ProductCode,
+                ProductSupplier = EXCLUDED.ProductSupplier,
+                SupplierId = EXCLUDED.SupplierId,
+                ProductDescription = EXCLUDED.ProductDescription,
+                ProductUnit = EXCLUDED.ProductUnit,
+                ProductQnt = EXCLUDED.ProductQnt,
+                ProductUnitPrice = EXCLUDED.ProductUnitPrice,
+                ProductSalePrice = EXCLUDED.ProductSalePrice,
+                TotalPriceOnProduct = EXCLUDED.TotalPriceOnProduct
+            WHERE Produtos.CompanyId = EXCLUDED.CompanyId;
             """;
 
         await using var db = await connection.OpenConnectionAsync();
@@ -122,8 +115,9 @@ public class ProdutoAB(Connection connection)
                 await using var select = new SqlCommand(
                     """
                     SELECT Id, ProductName, ProductQnt, ProductUnitPrice
-                    FROM Produtos WITH (UPDLOCK, ROWLOCK)
-                    WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
+                    FROM Produtos
+                    WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode
+                    FOR UPDATE;
                     """,
                     db,
                     transaction);
@@ -175,9 +169,10 @@ public class ProdutoAB(Connection connection)
     private async Task<string?> ResolveSupplierIdAsync(string companyId, string supplierName)
     {
         const string sql = """
-            SELECT TOP 1 Id
+            SELECT Id
             FROM Fornecedores
-            WHERE CompanyId = @CompanyId AND (FantasyName = @Name OR CompanyName = @Name);
+            WHERE CompanyId = @CompanyId AND (FantasyName = @Name OR CompanyName = @Name)
+            LIMIT 1;
             """;
 
         await using var db = await connection.OpenConnectionAsync();

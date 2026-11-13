@@ -1,0 +1,40 @@
+# API do PDV-Pedimais no Docker Swarm, atrás do Traefik.
+# O script API/deploy.sh preenche a rede, o Postgres e os segredos.
+
+services:
+  api:
+    image: ${IMAGE:-pdv-pedimais-api:latest}
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__HorusPdv: ${PDV_CONNECTION_STRING}
+      Auth__JwtSecret: ${AUTH_JWT_SECRET}
+      Security__EncryptionKey: ${SECURITY_ENCRYPTION_KEY}
+      Security__TrustForwardedHeaders: "true"
+      Security__CorsOrigins: https://pdv.reffix.com.br,https://apipdv.reffix.com.br,http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173
+      Recaptcha__Enabled: "false"
+    networks:
+      - traefik
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == ${SWARM_NODE}
+      update_config:
+        order: start-first
+      restart_policy:
+        condition: any
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=${TRAEFIK_NETWORK:-traefik}
+        - traefik.http.routers.pdv-api.rule=Host(`apipdv.reffix.com.br`)
+        - traefik.http.routers.pdv-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}
+        - traefik.http.routers.pdv-api.tls=true
+        - traefik.http.routers.pdv-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencryptresolver}
+        - traefik.http.routers.pdv-api.service=pdv-api
+        - traefik.http.services.pdv-api.loadbalancer.server.port=8080
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}

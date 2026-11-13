@@ -167,12 +167,14 @@ export default function MyCompanyPage() {
   const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [cepLookupError, setCepLookupError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [planExpiresAt, setPlanExpiresAt] = useState("");
 
   useEffect(() => {
     companyService
       .get()
       .then((data) => {
         if (!data) return;
+        setPlanExpiresAt(data.planExpiresAt || "");
         const server = companyDraftFromApi(data);
         baselineRef.current = JSON.stringify(server);
         if (!savedCompany) {
@@ -427,6 +429,14 @@ export default function MyCompanyPage() {
         title="Minha Empresa"
         description="Dados cadastrais e de contato da empresa."
       />
+
+      {planExpiresAt ? (
+        <p className="text-sm text-text-secondary">
+          O plano dura 30 dias após a compra. Válido até{" "}
+          {new Date(planExpiresAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.
+          Depois disso o caixa bloqueia.
+        </p>
+      ) : null}
 
       <section className="card rounded-2xl p-4 md:p-5">
         <form className="grid gap-4 md:grid-cols-12">

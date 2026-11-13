@@ -136,7 +136,8 @@ public class EmpresaController(EmpresaAB empresaAB) : ControllerBase
         EmailSmtpHasPassword = !string.IsNullOrWhiteSpace(source.EmailSmtpPassword),
         EmailSmtpFromEmail = source.EmailSmtpFromEmail,
         EmailSmtpFromName = source.EmailSmtpFromName,
-        EmailSmtpReplyTo = source.EmailSmtpReplyTo
+        EmailSmtpReplyTo = source.EmailSmtpReplyTo,
+        PlanExpiresAt = source.PlanExpiresAt?.ToString("o") ?? string.Empty
     };
 
     private static string ValidateEmailConfiguration(EmpresaRequest request, bool hasExistingPassword)

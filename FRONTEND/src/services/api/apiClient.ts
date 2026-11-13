@@ -156,6 +156,14 @@ async function performRequest<T>(
     };
   }
 
+  if (response.status === 402 && payload.details === "plan-expired") {
+    const stored = getStoredAuthUser();
+    if (stored) {
+      setAuthSession({ ...stored, planBlocked: true }, getAuthRemember());
+    }
+    throw new Error(payload.message || "O plano desta empresa venceu.");
+  }
+
   if (response.status === 401) {
     if (options.skipAuth) {
       throw new Error(payload.message || "E-mail ou senha inválidos.");

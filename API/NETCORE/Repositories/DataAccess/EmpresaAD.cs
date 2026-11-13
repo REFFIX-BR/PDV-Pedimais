@@ -32,4 +32,5 @@ public class EmpresaAD
     public string EmailSmtpFromEmail { get; set; } = string.Empty;
     public string EmailSmtpFromName { get; set; } = string.Empty;
     public string EmailSmtpReplyTo { get; set; } = string.Empty;
+    public DateTimeOffset? PlanExpiresAt { get; set; }
 }

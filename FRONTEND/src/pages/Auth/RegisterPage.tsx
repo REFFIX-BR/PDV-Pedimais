@@ -88,7 +88,7 @@ export default function RegisterPage({
   return (
     <AuthLayout
       title="Criar cadastro"
-      description="Preencha os dados da empresa para acessar o PDV."
+      description="Preencha os dados da empresa. O plano vale 30 dias a partir deste cadastro."
       onBackToLogin={onOpenLogin}
     >
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">

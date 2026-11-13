@@ -29,7 +29,7 @@ export function canDeleteProducts(role: string) {
 
 export function canAccessPage(role: string, page: PageKey) {
   const normalized = normalizeRole(role);
-  if (page === "caixas-abertos") return normalized === "administrador";
+  if (page === "caixas-abertos" || page === "cupons") return normalized === "administrador";
   if (normalized === "atendente") return attendantPages.has(page);
   if (normalized === "gerente" || normalized === "financeiro") return page !== "minha-empresa";
   return true;

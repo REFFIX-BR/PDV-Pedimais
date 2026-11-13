@@ -1,9 +1,9 @@
 /**
  * Arquivo: API/NETCORE/Repositories/Connection.cs
- * Objetivo: centraliza a criação de conexões SQL Server usadas pelos repositórios da API.
- * Entradas esperadas: espera configuração de connection string válida para abrir conexões com o banco.
+ * Objetivo: centraliza a criação de conexões PostgreSQL usadas pelos repositórios da API.
+ * Entradas esperadas: espera configuração de connection string válida para abrir o banco pdv_pedimais.
  */
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 namespace HORUSPDV_API.Repositories;
 
@@ -11,34 +11,30 @@ public sealed class Connection(IConfiguration configuration)
 {
     public string ConnectionString { get; } = ResolveConnectionString(configuration);
 
-    public async Task<SqlConnection> OpenConnectionAsync(
+    public async Task<NpgsqlConnection> OpenConnectionAsync(
         CancellationToken cancellationToken = default,
         string? database = null)
     {
-        var connectionString = string.IsNullOrWhiteSpace(database)
-            ? ConnectionString
-            : BuildConnectionString(database);
-        var connection = new SqlConnection(connectionString);
+        var connection = new NpgsqlConnection(BuildConnectionString(database));
         await connection.OpenAsync(cancellationToken);
         return connection;
     }
 
-    public SqlConnection OpenConnection(string? database = null)
+    public NpgsqlConnection OpenConnection(string? database = null)
     {
-        var connectionString = string.IsNullOrWhiteSpace(database)
-            ? ConnectionString
-            : BuildConnectionString(database);
-        var connection = new SqlConnection(connectionString);
+        var connection = new NpgsqlConnection(BuildConnectionString(database));
         connection.Open();
         return connection;
     }
 
-    private string BuildConnectionString(string database)
+    public string BuildConnectionString(string? database = null)
     {
-        var builder = new SqlConnectionStringBuilder(ConnectionString)
+        var builder = new NpgsqlConnectionStringBuilder(ConnectionString);
+        if (!string.IsNullOrWhiteSpace(database))
         {
-            InitialCatalog = database
-        };
+            builder.Database = database;
+        }
+
         return builder.ConnectionString;
     }
 

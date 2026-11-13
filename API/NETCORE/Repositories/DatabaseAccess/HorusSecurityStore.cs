@@ -1,12 +1,11 @@
 /**
  * Arquivo: API/NETCORE/Repositories/DatabaseAccess/HorusSecurityStore.cs
  * Objetivo: concentra comandos SQL de usuários, sessões, tentativas de login e tokens de recuperação.
- * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
+ * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no PostgreSQL.
  */
 using HORUSPDV_API.Models.Requests;
 using HORUSPDV_API.Repositories;
 using HORUSPDV_API.Services.Security;
-using Microsoft.Data.SqlClient;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -15,6 +14,7 @@ namespace HORUSPDV_API.Repositories.DatabaseAccess;
 public class HorusSecurityStore(Connection connection, HorusSecurityOptions securityOptions)
 {
     private const int MaxFailedAttempts = 5;
+    private const int PlanDurationDays = 30;
     private static readonly TimeSpan AttemptWindow = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(10);
     private static readonly object AttemptSyncRoot = new();
@@ -79,7 +79,7 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
         ValidateDuplicates(user, null, companyId);
         EnsureCompanyForPublicRegistration(companyId, request);
         InsertUser(user);
-        return ToDto(user);
+        return WithPlan(ToDto(user));
     }
 
     public SecurityUserDto? UpdateUser(string id, UsuarioRequest request, string companyId)
@@ -149,7 +149,7 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
         updated.MustChangePassword = user.MustChangePassword;
         ValidateDuplicates(updated, user.Id, user.CompanyId);
         UpdateUserRecord(updated);
-        return ToDto(updated);
+        return WithPlan(ToDto(updated));
     }
 
     public LoginResult Authenticate(string email, string password, string ip, string userAgent)
@@ -198,14 +198,14 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
                 throw;
             }
 
-            return LoginResult.Ok(ToDto(user), session);
+            return LoginResult.Ok(WithPlan(ToDto(user)), session);
         }
     }
 
     public SecurityUserDto? GetActiveUser(string id)
     {
         var user = FindUserById(id);
-        return user is null || user.Status != "ativo" ? null : ToDto(user);
+        return user is null || user.Status != "ativo" ? null : WithPlan(ToDto(user));
     }
 
     public List<SecuritySessionDto> ListSessions(string userId, string currentSessionId)
@@ -458,7 +458,7 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
             }
 
             using (var updateUser = new SqlCommand(
-                       "UPDATE Usuarios SET MustChangePassword = 1 WHERE Id = @UserId AND CompanyId = @CompanyId;",
+                       "UPDATE Usuarios SET MustChangePassword = TRUE WHERE Id = @UserId AND CompanyId = @CompanyId;",
                        db,
                        transaction))
             {
@@ -688,18 +688,16 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
         using var db = connection.OpenConnection();
         using var command = new SqlCommand(
             """
-            IF NOT EXISTS (SELECT 1 FROM Empresas WHERE Id = @Id)
-            BEGIN
-                INSERT INTO Empresas
-                    (Id, FantasyName, CorporateName, Cnpj, StateRegistration, Website, Email, SacPhone, Phone, Mobile,
-                     Cep, Address, Number, Neighborhood, City, Uf, Complement, EmailSmtpEnabled, EmailSmtpHost,
-                     EmailSmtpPort, EmailSmtpEnableSsl, EmailSmtpUser, EmailSmtpPassword, EmailSmtpFromEmail,
-                     EmailSmtpFromName, EmailSmtpReplyTo)
-                VALUES
-                    (@Id, @FantasyName, @CorporateName, @Cnpj, N'', N'', @Email, N'', @Phone, @Phone,
-                     N'', N'', N'', N'', N'', N'', N'', 0, N'smtp-mail.outlook.com',
-                     587, 1, N'', N'', N'', @FantasyName, N'');
-            END;
+            INSERT INTO Empresas
+                (Id, FantasyName, CorporateName, Cnpj, StateRegistration, Website, Email, SacPhone, Phone, Mobile,
+                 Cep, Address, Number, Neighborhood, City, Uf, Complement, EmailSmtpEnabled, EmailSmtpHost,
+                 EmailSmtpPort, EmailSmtpEnableSsl, EmailSmtpUser, EmailSmtpPassword, EmailSmtpFromEmail,
+                 EmailSmtpFromName, EmailSmtpReplyTo, PlanExpiresAt)
+            VALUES
+                (@Id, @FantasyName, @CorporateName, @Cnpj, '', '', @Email, '', @Phone, @Phone,
+                 '', '', '', '', '', '', '', FALSE, 'smtp-mail.outlook.com',
+                 587, TRUE, '', '', '', @FantasyName, '', @PlanExpiresAt)
+            ON CONFLICT (Id) DO NOTHING;
             """,
             db);
         command.Parameters.AddWithValue("@Id", companyId);
@@ -708,7 +706,33 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
         command.Parameters.AddWithValue("@Cnpj", request.Cnpj.Trim());
         command.Parameters.AddWithValue("@Email", request.Email.Trim().ToLowerInvariant());
         command.Parameters.AddWithValue("@Phone", request.Phone.Trim());
+        command.Parameters.AddWithValue("@PlanExpiresAt", DateTimeOffset.UtcNow.AddDays(PlanDurationDays));
         command.ExecuteNonQuery();
+    }
+
+    private SecurityUserDto WithPlan(SecurityUserDto user)
+    {
+        user.PlanExpiresAt = GetPlanExpiresAt(user.CompanyId);
+        user.PlanBlocked = user.PlanExpiresAt is not null && user.PlanExpiresAt <= DateTimeOffset.UtcNow;
+        return user;
+    }
+
+    private DateTimeOffset? GetPlanExpiresAt(string companyId)
+    {
+        if (string.IsNullOrWhiteSpace(companyId)) return null;
+
+        using var db = connection.OpenConnection();
+        using var command = new SqlCommand(
+            "SELECT PlanExpiresAt FROM Empresas WHERE Id = @Id;",
+            db);
+        command.Parameters.AddWithValue("@Id", companyId);
+        var value = command.ExecuteScalar();
+        return value switch
+        {
+            DateTimeOffset expiresAt => expiresAt,
+            DateTime expiresAt => new DateTimeOffset(DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc)),
+            _ => null
+        };
     }
 
     private void UpdateUserRecord(SecurityUserRecord user)
@@ -816,7 +840,7 @@ public class HorusSecurityStore(Connection connection, HorusSecurityOptions secu
             FROM Usuarios
             WHERE REPLACE(REPLACE(REPLACE(REPLACE(Cpf, '.', ''), '/', ''), '-', ''), ' ', '') = @Cnpj
               AND Email = @Email
-              AND Status = N'ativo';
+              AND Status = 'ativo';
             """,
             db,
             transaction);
@@ -1023,6 +1047,8 @@ public class SecurityUserDto
     public string CreatedAt { get; set; } = string.Empty;
     public string LastLoginAt { get; set; } = string.Empty;
     public bool MustChangePassword { get; set; }
+    public DateTimeOffset? PlanExpiresAt { get; set; }
+    public bool PlanBlocked { get; set; }
 }
 
 public class SecuritySessionDto

@@ -31,6 +31,8 @@ export type RegisterSalePayload = {
   customerCpf: string;
   paymentType: string;
   totalAmount: string;
+  subtotalAmount?: string;
+  couponCode?: string;
   operatorName: string;
   items: Array<{
     productCode: string;

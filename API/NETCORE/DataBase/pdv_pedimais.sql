@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS empresas (
     emailsmtppassword varchar(500) NOT NULL DEFAULT '',
     emailsmtpfromemail varchar(180) NOT NULL DEFAULT '',
     emailsmtpfromname varchar(180) NOT NULL DEFAULT '',
-    emailsmtpreplyto varchar(180) NOT NULL DEFAULT ''
+    emailsmtpreplyto varchar(180) NOT NULL DEFAULT '',
+    planexpiresat timestamptz NULL
 );
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -292,3 +293,18 @@ CREATE TABLE IF NOT EXISTS pagamentosintegrados (
 
 CREATE INDEX IF NOT EXISTS ix_pagamentosintegrados_company ON pagamentosintegrados (companyid, createdat);
 CREATE INDEX IF NOT EXISTS ix_pagamentosintegrados_venda ON pagamentosintegrados (vendaid);
+
+CREATE TABLE IF NOT EXISTS cupons (
+    id varchar(40) PRIMARY KEY,
+    companyid varchar(40) NOT NULL,
+    code varchar(40) NOT NULL,
+    description varchar(180) NOT NULL DEFAULT '',
+    kind varchar(20) NOT NULL,
+    amount varchar(30) NOT NULL,
+    active boolean NOT NULL DEFAULT true,
+    createdat timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cupons_company_code ON cupons (companyid, code);
+
+ALTER TABLE empresas ADD COLUMN IF NOT EXISTS planexpiresat timestamptz NULL;

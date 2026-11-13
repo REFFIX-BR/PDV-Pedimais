@@ -22,9 +22,10 @@ public class HorusAuthMiddleware(RequestDelegate next)
         var token = ResolveToken(context);
 
         var authenticatedUser = string.IsNullOrWhiteSpace(token) ? null : jwtService.ValidateToken(token);
-        if (authenticatedUser is null ||
-            !securityStore.IsSessionActive(authenticatedUser.SessionId) ||
-            securityStore.GetActiveUser(authenticatedUser.Id) is null)
+        var activeUser = authenticatedUser is not null && securityStore.IsSessionActive(authenticatedUser.SessionId)
+            ? securityStore.GetActiveUser(authenticatedUser.Id)
+            : null;
+        if (authenticatedUser is null || activeUser is null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new ApiResponse<object>
@@ -36,6 +37,18 @@ public class HorusAuthMiddleware(RequestDelegate next)
         }
 
         context.Items["CurrentUser"] = authenticatedUser;
+        if (!AllowsExpiredPlan(context) && activeUser.PlanBlocked)
+        {
+            context.Response.StatusCode = StatusCodes.Status402PaymentRequired;
+            await context.Response.WriteAsJsonAsync(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "O plano desta empresa venceu. Fale com a REFFIX para renovar.",
+                Details = "plan-expired"
+            });
+            return;
+        }
+
         var rolePolicy = context.GetEndpoint()?.Metadata.GetMetadata<HorusAuthorizeRolesAttribute>();
         if (rolePolicy is not null && rolePolicy.Roles.Count > 0 && !rolePolicy.Roles.Contains(authenticatedUser.Role))
         {
@@ -49,6 +62,15 @@ public class HorusAuthMiddleware(RequestDelegate next)
         }
 
         await next(context);
+    }
+
+    private static bool AllowsExpiredPlan(HttpContext context)
+    {
+        var path = context.Request.Path.Value ?? "";
+        if (path.StartsWith("/api/Auth/logout", StringComparison.OrdinalIgnoreCase)) return true;
+        if (path.StartsWith("/api/Auth/refresh", StringComparison.OrdinalIgnoreCase)) return true;
+        return path.StartsWith("/api/Auth/me", StringComparison.OrdinalIgnoreCase) &&
+               HttpMethods.IsGet(context.Request.Method);
     }
 
     private static bool ShouldSkipAuth(HttpContext context)

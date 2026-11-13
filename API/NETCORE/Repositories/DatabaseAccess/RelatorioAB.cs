@@ -3,7 +3,6 @@
  * Objetivo: gerar relatórios operacionais reais a partir das tabelas atuais do PDV.
  * Entradas esperadas: recebe identificador do relatório, filtros serializados e retorna colunas/linhas para o frontend.
  */
-using Microsoft.Data.SqlClient;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;

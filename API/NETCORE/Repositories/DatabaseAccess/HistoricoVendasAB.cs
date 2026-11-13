@@ -5,7 +5,6 @@
  */
 using HORUSPDV_API.Models.Requests;
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -132,10 +131,16 @@ public class HistoricoVendasAB(Connection connection)
 
     private static async Task<string> NextSaleNumberAsync(SqlConnection db, SqlTransaction transaction, string companyId)
     {
+        await using (var lockCommand = new SqlCommand("SELECT pg_advisory_xact_lock(hashtext(@CompanyId)::bigint);", db, transaction))
+        {
+            lockCommand.Parameters.AddWithValue("@CompanyId", companyId);
+            await lockCommand.ExecuteNonQueryAsync();
+        }
+
         await using var command = new SqlCommand(
             """
-            SELECT CONVERT(NVARCHAR(30), ISNULL(MAX(TRY_CONVERT(INT, SaleNumber)), 15039) + 1)
-            FROM Vendas WITH (UPDLOCK, HOLDLOCK)
+            SELECT (COALESCE(MAX(CASE WHEN SaleNumber ~ '^[0-9]+$' THEN SaleNumber::integer END), 15039) + 1)::text
+            FROM Vendas
             WHERE CompanyId = @CompanyId;
             """,
             db,
@@ -170,8 +175,9 @@ public class HistoricoVendasAB(Connection connection)
             await using var select = new SqlCommand(
                 """
                 SELECT Id, ProductName, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice
-                FROM Produtos WITH (UPDLOCK, ROWLOCK)
-                WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
+                FROM Produtos
+                WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode
+                FOR UPDATE;
                 """,
                 db,
                 transaction);
@@ -243,61 +249,10 @@ public class HistoricoVendasAB(Connection connection)
         SaleDate = reader.GetDateTimeOffset(reader.GetOrdinal("SaleDate")).LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
     };
 
-    private static async Task EnsurePrintColumnsAsync(SqlConnection db)
+    private static Task EnsurePrintColumnsAsync(SqlConnection db)
     {
-        const string schemaSql = """
-            IF COL_LENGTH('Vendas', 'PaymentType') IS NULL
-                ALTER TABLE Vendas ADD PaymentType NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_PaymentType DEFAULT N'-';
-            IF COL_LENGTH('Vendas', 'TotalAmount') IS NULL
-                ALTER TABLE Vendas ADD TotalAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_TotalAmount DEFAULT N'0,00';
-            IF COL_LENGTH('Vendas', 'OperatorName') IS NULL
-                ALTER TABLE Vendas ADD OperatorName NVARCHAR(180) NOT NULL CONSTRAINT DF_Vendas_OperatorName DEFAULT N'Operador';
-            IF COL_LENGTH('VendaItens', 'UnitPrice') IS NULL
-                ALTER TABLE VendaItens ADD UnitPrice NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_UnitPrice DEFAULT N'0,00';
-            IF COL_LENGTH('VendaItens', 'ItemTotal') IS NULL
-                ALTER TABLE VendaItens ADD ItemTotal NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_ItemTotal DEFAULT N'0,00';
-            IF COL_LENGTH('Vendas', 'Status') IS NULL
-                ALTER TABLE Vendas ADD Status NVARCHAR(20) NOT NULL CONSTRAINT DF_Vendas_Status DEFAULT N'Concluida';
-            IF COL_LENGTH('Vendas', 'RefundedAmount') IS NULL
-                ALTER TABLE Vendas ADD RefundedAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_RefundedAmount DEFAULT N'0,00';
-            IF COL_LENGTH('VendaItens', 'ReturnedQuantity') IS NULL
-                ALTER TABLE VendaItens ADD ReturnedQuantity DECIMAL(18, 3) NOT NULL CONSTRAINT DF_VendaItens_ReturnedQuantity DEFAULT 0;
-            """;
-
-        const string backfillSql = """
-            UPDATE i
-               SET UnitPrice = COALESCE(NULLIF(LTRIM(RTRIM(p.ProductSalePrice)), ''), NULLIF(LTRIM(RTRIM(p.ProductUnitPrice)), ''), N'0,00')
-              FROM VendaItens i
-              INNER JOIN Vendas v ON v.Id = i.VendaId
-              INNER JOIN Produtos p ON p.CompanyId = v.CompanyId AND p.ProductCode = i.ProductCode
-             WHERE NULLIF(LTRIM(RTRIM(i.UnitPrice)), '') IS NULL
-                OR REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(i.UnitPrice)), N'R$', N''), N'.', N''), N',', N'.') IN (N'0', N'0.00');
-
-            UPDATE i
-               SET ItemTotal = FORMAT(
-                    TRY_CONVERT(
-                        DECIMAL(18, 2),
-                        REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(i.UnitPrice)), N'R$', N''), N'.', N''), N',', N'.')
-                    ) * i.Quantity,
-                    N'N2',
-                    N'pt-BR'
-               )
-              FROM VendaItens i
-             WHERE (NULLIF(LTRIM(RTRIM(i.ItemTotal)), '') IS NULL
-                OR REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(i.ItemTotal)), N'R$', N''), N'.', N''), N',', N'.') IN (N'0', N'0.00'))
-               AND TRY_CONVERT(
-                    DECIMAL(18, 2),
-                    REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(i.UnitPrice)), N'R$', N''), N'.', N''), N',', N'.')
-               ) IS NOT NULL;
-            """;
-
-        await using (var schemaCommand = new SqlCommand(schemaSql, db))
-        {
-            await schemaCommand.ExecuteNonQueryAsync();
-        }
-
-        await using var backfillCommand = new SqlCommand(backfillSql, db);
-        await backfillCommand.ExecuteNonQueryAsync();
+        _ = db;
+        return Task.CompletedTask;
     }
 
     private static decimal ParseDecimal(string value)

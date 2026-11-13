@@ -4,7 +4,6 @@
  * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
  */
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -49,7 +48,7 @@ public class CaixaAB(Connection connection)
             INSERT INTO CaixaSessoes
                 (Id, CompanyId, OpenedAt, OpeningAmount, ClosingAmount, OperatorId, OperatorName, ClosedById, ClosedByName, Note)
             VALUES
-                (@Id, @CompanyId, @OpenedAt, @OpeningAmount, N'0,00', @OperatorId, @OperatorName, N'', N'', N'');
+                (@Id, @CompanyId, @OpenedAt, @OpeningAmount, '0,00', @OperatorId, @OperatorName, '', '', '');
             """,
             db);
         command.Parameters.AddWithValue("@Id", id);
@@ -173,7 +172,7 @@ public class CaixaAB(Connection connection)
         await using var db = await connection.OpenConnectionAsync();
         await using var command = new SqlCommand(
             """
-            SELECT i.Quantity - ISNULL(i.ReturnedQuantity, 0) AS Quantity, i.Quantity AS SoldQuantity, i.ItemTotal, p.ProductUnitPrice
+            SELECT i.Quantity - COALESCE(i.ReturnedQuantity, 0) AS Quantity, i.Quantity AS SoldQuantity, i.ItemTotal, p.ProductUnitPrice
             FROM Vendas v
             INNER JOIN VendaItens i ON i.VendaId = v.Id
             LEFT JOIN Produtos p ON p.CompanyId = v.CompanyId AND p.ProductCode = i.ProductCode
@@ -211,7 +210,7 @@ public class CaixaAB(Connection connection)
             SELECT TotalAmount
             FROM Vendas
             WHERE CompanyId = @CompanyId
-              AND PaymentType = N'dinheiro'
+              AND PaymentType = 'dinheiro'
               AND SaleDate >= @OpenedAt;
             """,
             db);

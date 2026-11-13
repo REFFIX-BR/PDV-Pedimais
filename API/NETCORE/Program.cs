@@ -44,6 +44,7 @@ builder.Services.AddScoped<FornecedorAB>();
 builder.Services.AddScoped<EmpresaAB>();
 builder.Services.AddScoped<HistoricoVendasAB>();
 builder.Services.AddScoped<DevolucaoAB>();
+builder.Services.AddScoped<CupomAB>();
 builder.Services.AddScoped<ModuloMercadoAB>();
 builder.Services.AddScoped<CaixaAB>();
 builder.Services.AddScoped<HomeAB>();
@@ -86,7 +87,8 @@ else
     app.UseHsts();
 }
 
-if (!app.Environment.IsDevelopment())
+var trustForwardedHeaders = bool.TryParse(app.Configuration["Security:TrustForwardedHeaders"], out var trustForwarded) && trustForwarded;
+if (!app.Environment.IsDevelopment() && !trustForwardedHeaders)
 {
     app.UseHttpsRedirection();
 }

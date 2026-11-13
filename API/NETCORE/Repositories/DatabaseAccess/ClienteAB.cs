@@ -4,7 +4,6 @@
  * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
  */
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -53,35 +52,29 @@ public class ClienteAB(Connection connection)
     public async Task<ClienteAD> SalvarAsync(string companyId, ClienteAD customer)
     {
         const string sql = """
-            IF EXISTS (SELECT 1 FROM Clientes WHERE Id = @Id AND CompanyId = @CompanyId)
-            BEGIN
-                UPDATE Clientes
-                   SET CustomerName = @CustomerName,
-                       Document = @Document,
-                       BirthDate = @BirthDate,
-                       Age = @Age,
-                       Cep = @Cep,
-                       City = @City,
-                       State = @State,
-                       Address = @Address,
-                       Neighborhood = @Neighborhood,
-                       StreetComplement = @StreetComplement,
-                       Number = @Number,
-                       ReferencePoint = @ReferencePoint,
-                       Telephone = @Telephone,
-                       Cellphone = @Cellphone,
-                       Email = @Email
-                 WHERE Id = @Id AND CompanyId = @CompanyId;
-            END
-            ELSE
-            BEGIN
-                INSERT INTO Clientes
-                    (Id, CompanyId, CustomerName, Document, BirthDate, Age, Cep, City, State, Address, Neighborhood,
-                     StreetComplement, Number, ReferencePoint, Telephone, Cellphone, Email)
-                VALUES
-                    (@Id, @CompanyId, @CustomerName, @Document, @BirthDate, @Age, @Cep, @City, @State, @Address, @Neighborhood,
-                     @StreetComplement, @Number, @ReferencePoint, @Telephone, @Cellphone, @Email);
-            END;
+            INSERT INTO Clientes
+                (Id, CompanyId, CustomerName, Document, BirthDate, Age, Cep, City, State, Address, Neighborhood,
+                 StreetComplement, Number, ReferencePoint, Telephone, Cellphone, Email)
+            VALUES
+                (@Id, @CompanyId, @CustomerName, @Document, @BirthDate, @Age, @Cep, @City, @State, @Address, @Neighborhood,
+                 @StreetComplement, @Number, @ReferencePoint, @Telephone, @Cellphone, @Email)
+            ON CONFLICT (Id) DO UPDATE SET
+                CustomerName = EXCLUDED.CustomerName,
+                Document = EXCLUDED.Document,
+                BirthDate = EXCLUDED.BirthDate,
+                Age = EXCLUDED.Age,
+                Cep = EXCLUDED.Cep,
+                City = EXCLUDED.City,
+                State = EXCLUDED.State,
+                Address = EXCLUDED.Address,
+                Neighborhood = EXCLUDED.Neighborhood,
+                StreetComplement = EXCLUDED.StreetComplement,
+                Number = EXCLUDED.Number,
+                ReferencePoint = EXCLUDED.ReferencePoint,
+                Telephone = EXCLUDED.Telephone,
+                Cellphone = EXCLUDED.Cellphone,
+                Email = EXCLUDED.Email
+            WHERE Clientes.CompanyId = EXCLUDED.CompanyId;
             """;
 
         await using var db = await connection.OpenConnectionAsync();

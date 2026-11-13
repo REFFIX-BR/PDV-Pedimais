@@ -14,7 +14,7 @@ namespace HORUSPDV_API.Controllers.HistoricoVendas;
 
 [ApiController]
 [Route("api/[controller]")]
-public class HistoricoVendasController(HistoricoVendasAB historicoVendasAB, HorusCaixaService caixaService) : ControllerBase
+public class HistoricoVendasController(HistoricoVendasAB historicoVendasAB, HorusCaixaService caixaService, CupomAB cupomAB) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Listar()
@@ -45,6 +45,14 @@ public class HistoricoVendasController(HistoricoVendasAB historicoVendasAB, Horu
         {
             caixaService.EnsureVendaPermitida(currentUser);
             request.OperatorName = string.IsNullOrWhiteSpace(currentUser.Name) ? "Operador" : currentUser.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(request.CouponCode))
+            {
+                var applied = await cupomAB.CalcularAsync(
+                    currentUser.CompanyId,
+                    request.CouponCode,
+                    string.IsNullOrWhiteSpace(request.SubtotalAmount) ? request.TotalAmount : request.SubtotalAmount);
+                request.TotalAmount = applied.Payable;
+            }
             var result = await historicoVendasAB.RegistrarAsync(currentUser.CompanyId, request);
             return StatusCode(StatusCodes.Status201Created, new ApiResponse<object>
             {

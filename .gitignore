@@ -1,5 +1,6 @@
 # Ignore environment variables
 horuspdv-app/hpdv/backend/.env
+API/secrets.env
 
 # Dependencies
 node_modules/

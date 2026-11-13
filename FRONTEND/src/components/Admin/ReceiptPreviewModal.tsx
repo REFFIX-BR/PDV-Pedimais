@@ -40,6 +40,8 @@ export type SaleReceipt = {
   paymentLabel: string;
   operatorName: string;
   subtotal: number;
+  couponCode?: string;
+  couponDiscount?: number;
   cashGiven: number;
   change: number;
   items: SaleReceiptItem[];
@@ -140,6 +142,11 @@ function buildReceiptPrintHtml(receipt: SaleReceipt, formatMoney: (value: number
       </section>
       <div class="divider"></div>
       <section>
+        ${
+          receipt.couponCode && receipt.couponDiscount
+            ? `<div class="line"><span>Cupom ${escapeHtml(receipt.couponCode)}</span><span>- R$ ${formatMoney(receipt.couponDiscount)}</span></div>`
+            : ""
+        }
         <div class="line bold"><span>TOTAL</span><span>R$ ${formatMoney(receipt.subtotal)}</span></div>
         <div class="line"><span>Pagamento</span><span>${escapeHtml(receipt.paymentLabel || "-")}</span></div>
         ${
@@ -257,6 +264,12 @@ export default function ReceiptPreviewModal({
               <div className="my-3 border-t border-dashed border-slate-500" />
 
               <div className="space-y-1">
+                {receipt.couponCode && receipt.couponDiscount ? (
+                  <div className="flex justify-between">
+                    <span>Cupom {receipt.couponCode}</span>
+                    <span>- R$ {formatMoney(receipt.couponDiscount)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between font-bold">
                   <span>TOTAL</span>
                   <span>R$ {formatMoney(receipt.subtotal)}</span>

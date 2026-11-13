@@ -4,7 +4,6 @@
  * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
  */
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -23,11 +22,9 @@ public class ModuloMercadoAB(Connection connection)
         await using var db = await connection.OpenConnectionAsync();
         await using var command = new SqlCommand(
             """
-            IF NOT EXISTS (SELECT 1 FROM ModulosMercado WHERE Id = @Id)
-            BEGIN
-                INSERT INTO ModulosMercado (Id, Title)
-                VALUES (@Id, @Title);
-            END;
+            INSERT INTO ModulosMercado (Id, Title)
+            VALUES (@Id, @Title)
+            ON CONFLICT (Id) DO NOTHING;
             """,
             db);
         command.Parameters.AddWithValue("@Id", id);

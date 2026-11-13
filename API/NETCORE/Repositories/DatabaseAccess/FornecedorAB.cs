@@ -4,7 +4,6 @@
  * Entradas esperadas: recebe conexão configurada, parâmetros normalizados e executa leitura/escrita no SQL Server.
  */
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -53,34 +52,28 @@ public class FornecedorAB(Connection connection)
     public async Task<FornecedorAD> SalvarAsync(string companyId, FornecedorAD supplier)
     {
         const string sql = """
-            IF EXISTS (SELECT 1 FROM Fornecedores WHERE Id = @Id AND CompanyId = @CompanyId)
-            BEGIN
-                UPDATE Fornecedores
-                   SET CompanyName = @CompanyName,
-                       FantasyName = @FantasyName,
-                       Cnpj = @Cnpj,
-                       Cep = @Cep,
-                       City = @City,
-                       State = @State,
-                       Address = @Address,
-                       Neighborhood = @Neighborhood,
-                       StreetComplement = @StreetComplement,
-                       Number = @Number,
-                       ReferencePoint = @ReferencePoint,
-                       Telephone = @Telephone,
-                       Cellphone = @Cellphone,
-                       Email = @Email
-                 WHERE Id = @Id AND CompanyId = @CompanyId;
-            END
-            ELSE
-            BEGIN
-                INSERT INTO Fornecedores
-                    (Id, CompanyId, CompanyName, FantasyName, Cnpj, Cep, City, State, Address, Neighborhood,
-                     StreetComplement, Number, ReferencePoint, Telephone, Cellphone, Email)
-                VALUES
-                    (@Id, @CompanyId, @CompanyName, @FantasyName, @Cnpj, @Cep, @City, @State, @Address, @Neighborhood,
-                     @StreetComplement, @Number, @ReferencePoint, @Telephone, @Cellphone, @Email);
-            END;
+            INSERT INTO Fornecedores
+                (Id, CompanyId, CompanyName, FantasyName, Cnpj, Cep, City, State, Address, Neighborhood,
+                 StreetComplement, Number, ReferencePoint, Telephone, Cellphone, Email)
+            VALUES
+                (@Id, @CompanyId, @CompanyName, @FantasyName, @Cnpj, @Cep, @City, @State, @Address, @Neighborhood,
+                 @StreetComplement, @Number, @ReferencePoint, @Telephone, @Cellphone, @Email)
+            ON CONFLICT (Id) DO UPDATE SET
+                CompanyName = EXCLUDED.CompanyName,
+                FantasyName = EXCLUDED.FantasyName,
+                Cnpj = EXCLUDED.Cnpj,
+                Cep = EXCLUDED.Cep,
+                City = EXCLUDED.City,
+                State = EXCLUDED.State,
+                Address = EXCLUDED.Address,
+                Neighborhood = EXCLUDED.Neighborhood,
+                StreetComplement = EXCLUDED.StreetComplement,
+                Number = EXCLUDED.Number,
+                ReferencePoint = EXCLUDED.ReferencePoint,
+                Telephone = EXCLUDED.Telephone,
+                Cellphone = EXCLUDED.Cellphone,
+                Email = EXCLUDED.Email
+            WHERE Fornecedores.CompanyId = EXCLUDED.CompanyId;
             """;
 
         await using var db = await connection.OpenConnectionAsync();

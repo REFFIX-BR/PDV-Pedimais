@@ -6,7 +6,6 @@
 using System.Globalization;
 using HORUSPDV_API.Models.Requests;
 using HORUSPDV_API.Repositories.DataAccess;
-using Microsoft.Data.SqlClient;
 
 namespace HORUSPDV_API.Repositories.DatabaseAccess;
 
@@ -327,8 +326,9 @@ public class DevolucaoAB(Connection connection)
         await using (var command = new SqlCommand(
                          """
                          SELECT Id, SaleNumber, PaymentType, TotalAmount, Status, RefundedAmount
-                         FROM Vendas WITH (UPDLOCK, ROWLOCK)
-                         WHERE CompanyId = @CompanyId AND SaleNumber = @SaleNumber;
+                         FROM Vendas
+                         WHERE CompanyId = @CompanyId AND SaleNumber = @SaleNumber
+                         FOR UPDATE;
                          """,
                          db,
                          transaction))
@@ -358,8 +358,9 @@ public class DevolucaoAB(Connection connection)
         await using var items = new SqlCommand(
             """
             SELECT Id, ProductCode, ProductName, Quantity, ReturnedQuantity, UnitPrice, ItemTotal
-            FROM VendaItens WITH (UPDLOCK, ROWLOCK)
-            WHERE VendaId = @VendaId;
+            FROM VendaItens
+            WHERE VendaId = @VendaId
+            FOR UPDATE;
             """,
             db,
             transaction);
@@ -390,8 +391,9 @@ public class DevolucaoAB(Connection connection)
         await using var command = new SqlCommand(
             """
             SELECT ProductCode, ProductName, ProductUnit, ProductSalePrice, ProductUnitPrice
-            FROM Produtos WITH (UPDLOCK, ROWLOCK)
-            WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
+            FROM Produtos
+            WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode
+            FOR UPDATE;
             """,
             db,
             transaction);
@@ -429,8 +431,9 @@ public class DevolucaoAB(Connection connection)
         await using (var select = new SqlCommand(
                          """
                          SELECT Id, ProductName, ProductUnit, ProductQnt, ProductUnitPrice
-                         FROM Produtos WITH (UPDLOCK, ROWLOCK)
-                         WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
+                         FROM Produtos
+                         WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode
+                         FOR UPDATE;
                          """,
                          db,
                          transaction))
@@ -546,50 +549,10 @@ public class DevolucaoAB(Connection connection)
         return unit is "kg" or "l" ? unit : "un";
     }
 
-    private static async Task EnsureSchemaAsync(SqlConnection db)
+    private static Task EnsureSchemaAsync(SqlConnection db)
     {
-        const string sql = """
-            IF COL_LENGTH('Vendas', 'Status') IS NULL
-                ALTER TABLE Vendas ADD Status NVARCHAR(20) NOT NULL CONSTRAINT DF_Vendas_Status DEFAULT N'Concluida';
-            IF COL_LENGTH('Vendas', 'RefundedAmount') IS NULL
-                ALTER TABLE Vendas ADD RefundedAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_RefundedAmount DEFAULT N'0,00';
-            IF COL_LENGTH('VendaItens', 'ReturnedQuantity') IS NULL
-                ALTER TABLE VendaItens ADD ReturnedQuantity DECIMAL(18, 3) NOT NULL CONSTRAINT DF_VendaItens_ReturnedQuantity DEFAULT 0;
-            IF OBJECT_ID(N'Devolucoes', N'U') IS NULL
-            BEGIN
-                CREATE TABLE Devolucoes
-                (
-                    Id NVARCHAR(40) NOT NULL CONSTRAINT PK_Devolucoes PRIMARY KEY,
-                    CompanyId NVARCHAR(40) NOT NULL,
-                    SaleNumber NVARCHAR(30) NOT NULL,
-                    Kind NVARCHAR(20) NOT NULL,
-                    Reason NVARCHAR(180) NOT NULL,
-                    RefundAmount NVARCHAR(30) NOT NULL,
-                    ChargeAmount NVARCHAR(30) NOT NULL,
-                    PaymentType NVARCHAR(30) NOT NULL,
-                    OperatorId NVARCHAR(40) NOT NULL,
-                    OperatorName NVARCHAR(180) NOT NULL,
-                    CreatedAt DATETIMEOFFSET NOT NULL
-                );
-            END;
-            IF OBJECT_ID(N'DevolucaoItens', N'U') IS NULL
-            BEGIN
-                CREATE TABLE DevolucaoItens
-                (
-                    Id NVARCHAR(40) NOT NULL CONSTRAINT PK_DevolucaoItens PRIMARY KEY,
-                    DevolucaoId NVARCHAR(40) NOT NULL,
-                    Direction NVARCHAR(10) NOT NULL,
-                    ProductCode NVARCHAR(80) NOT NULL,
-                    ProductName NVARCHAR(180) NOT NULL,
-                    Quantity DECIMAL(18, 3) NOT NULL,
-                    UnitPrice NVARCHAR(30) NOT NULL,
-                    ItemTotal NVARCHAR(30) NOT NULL,
-                    CONSTRAINT FK_DevolucaoItens_Devolucoes FOREIGN KEY (DevolucaoId) REFERENCES Devolucoes (Id) ON DELETE CASCADE
-                );
-            END;
-            """;
-        await using var command = new SqlCommand(sql, db);
-        await command.ExecuteNonQueryAsync();
+        _ = db;
+        return Task.CompletedTask;
     }
 
     private static decimal Price(string value)
