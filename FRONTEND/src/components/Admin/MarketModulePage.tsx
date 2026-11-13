@@ -5,6 +5,7 @@
  */
 import { CheckCircle2, CircleAlert, Clock3, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { type ClipboardEvent, type FormEvent, useMemo, useState } from "react";
+import { hasFilledValue, readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import PageHeader from "@/components/Admin/PageHeader";
 import { SearchableSelectField } from "@/components/Form";
 import LoadingButton from "@/components/Loading/LoadingButton";
@@ -126,9 +127,36 @@ export default function MarketModulePage({
 }: MarketModulePageProps) {
   const statusDialog = useStatusDialog();
   const { maskCurrencyBr } = useInputMasks();
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingRecord, setEditingRecord] = useState<MarketModuleRecord | null>(null);
-  const [form, setForm] = useState<MarketModuleRecordPayload>(emptyForm);
+  const [savedModuleDraft] = useState(() =>
+    readFormDraft<{ open: boolean; editingId: string | null; form: MarketModuleRecordPayload }>(
+      `modulo.${config.id}`,
+    ),
+  );
+  const [formOpen, setFormOpen] = useState(
+    () => Boolean(savedModuleDraft?.open) || hasFilledValue(savedModuleDraft?.form),
+  );
+  const [editingRecord, setEditingRecord] = useState<MarketModuleRecord | null>(() => {
+    if (!savedModuleDraft?.editingId) return null;
+    return (
+      config.records.find((record) => record.id === savedModuleDraft.editingId) ?? {
+        id: savedModuleDraft.editingId,
+        title: savedModuleDraft.form?.title ?? "",
+        description: savedModuleDraft.form?.description ?? "",
+        status: savedModuleDraft.form?.status ?? "Ativo",
+        amount: savedModuleDraft.form?.amount ?? "",
+        meta: savedModuleDraft.form?.meta ?? "",
+      }
+    );
+  });
+  const [form, setForm] = useState<MarketModuleRecordPayload>(() => ({
+    ...emptyForm,
+    ...(savedModuleDraft?.form ?? {}),
+  }));
+  usePersistFormDraft(`modulo.${config.id}`, {
+    open: formOpen,
+    editingId: editingRecord?.id ?? null,
+    form,
+  });
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -160,6 +188,11 @@ export default function MarketModulePage({
     setEditingRecord(record);
     setForm(toPayload(record));
     setFormOpen(true);
+  };
+
+  const hideForm = () => {
+    if (saving) return;
+    setFormOpen(false);
   };
 
   const closeForm = () => {
@@ -543,7 +576,7 @@ export default function MarketModulePage({
               </div>
               <button
                 type="button"
-                onClick={closeForm}
+                onClick={hideForm}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-hover-light"
                 aria-label="Fechar formulário"
               >
@@ -612,7 +645,7 @@ export default function MarketModulePage({
             <div className="flex flex-col-reverse gap-2 border-t border-border-primary px-4 py-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={closeForm}
+                onClick={hideForm}
                 className="rounded-xl border border-border-secondary px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-hover-light"
               >
                 Cancelar

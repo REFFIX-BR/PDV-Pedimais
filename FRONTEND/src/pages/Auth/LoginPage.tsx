@@ -1,7 +1,7 @@
 /**
  * Arquivo: src/pages/Auth/LoginPage.tsx
  * Objetivo: renderiza autenticação do usuário e inicialização da sessão no frontend.
- * Entradas esperadas: recebe callbacks de sucesso e navegação para cadastro/recuperação.
+ * Entradas esperadas: recebe callbacks de sucesso e navegação para recuperação de senha.
  */
 import { LogIn } from "lucide-react";
 import { useState } from "react";
@@ -19,13 +19,11 @@ type LoginPageProps = {
     recaptchaToken?: string,
   ) => Promise<AuthActionResult>;
   onOpenForgotPassword: () => void;
-  onOpenRegister: () => void;
 };
 
 export default function LoginPage({
   onLogin,
   onOpenForgotPassword,
-  onOpenRegister,
 }: LoginPageProps) {
   const { executeRecaptcha, isRecaptchaConfigured } = useRecaptchaV3();
   const [email, setEmail] = useState("");
@@ -67,6 +65,7 @@ export default function LoginPage({
     <AuthLayout
       title="Bem-vindo de volta!"
       description="Use seu e-mail e senha para acessar o painel."
+      backdrop="/login-fundo.jpg"
     >
       <EmailField value={email} onChange={setEmail} onEnter={handleLogin} />
       <PasswordField
@@ -108,16 +107,24 @@ export default function LoginPage({
         Entrar
       </LoadingButton>
 
-      <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-text-secondary">
-        <span>Não tem uma conta?</span>
-        <button
-          type="button"
-          onClick={onOpenRegister}
-          disabled={isSubmitting}
-          className="font-semibold text-secondary transition hover:text-hover-secondary disabled:opacity-60"
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t border-border-primary pt-4 text-sm text-text-secondary">
+        <a
+          href="/site"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-secondary transition hover:text-hover-secondary"
         >
-          Criar cadastro
-        </button>
+          Conheça o sistema
+        </a>
+        <span aria-hidden="true">·</span>
+        <a
+          href="/site/precos"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-secondary transition hover:text-hover-secondary"
+        >
+          Ver preços
+        </a>
       </div>
 
       <FeedbackMessage result={feedback} />

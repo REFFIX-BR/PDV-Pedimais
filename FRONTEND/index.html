@@ -4,20 +4,60 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="no-referrer" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <link rel="apple-touch-icon" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Hórus PDV é um PDV grátis com frente de caixa, sistema de cadastro, estoque, vendas, clientes, fornecedores e relatórios para pequenos comércios."
+      content="PDV-Pedimais é o sistema de frente de caixa, cadastro, estoque, vendas, clientes, fornecedores e relatórios."
     />
-    <meta
-      name="keywords"
-      content="pdv gratis, pdv grátis, frente de caixa gratis, frente de caixa grátis, sistema de cadastro gratis, sistema de cadastro grátis, sistema pdv gratuito, controle de estoque gratis"
-    />
-    <title>Hórus PDV - PDV grátis e frente de caixa</title>
+    <title>PDV-Pedimais</title>
+    <style>
+      html, body { margin: 0; height: 100%; }
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background:
+          radial-gradient(circle at 15% 20%, rgba(46, 191, 244, 0.18), transparent 42%),
+          radial-gradient(circle at 88% 82%, rgba(255, 140, 40, 0.14), transparent 40%),
+          #f8fafc;
+        color: #475569;
+        font-family: "Segoe UI", sans-serif;
+      }
+      .boot-brand { display: flex; align-items: center; gap: 16px; }
+      .boot-logo { width: 88px; height: 88px; object-fit: contain; }
+      .boot-word { height: 64px; width: auto; max-width: min(420px, 58vw); object-fit: contain; object-position: left center; }
+      .boot-status { margin: 0; max-width: 420px; padding: 0 24px; text-align: center; font-size: 15px; line-height: 1.45; }
+      .boot-track { width: 180px; height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+      .boot-bar {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #075985, #2ebff4);
+        animation: boot-slide 1.15s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" role="status" aria-live="polite">
+        <div class="boot-brand">
+          <img class="boot-logo" src="/logo.png" alt="" />
+          <img class="boot-word" src="/wordmark.png" alt="PDV-Pedimais, painel operacional" />
+        </div>
+        <p class="boot-status">Carregando o sistema</p>
+        <div class="boot-track" aria-hidden="true"><span class="boot-bar"></span></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

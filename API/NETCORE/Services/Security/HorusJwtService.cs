@@ -51,6 +51,22 @@ public class HorusJwtService(HorusSecurityOptions securityOptions)
 
     public AuthenticatedUser? ValidateToken(string token)
     {
+        var root = ReadVerifiedPayload(token);
+        if (root is null) return null;
+
+        var exp = root.Value.TryGetProperty("exp", out var expElement) ? expElement.GetInt64() : 0;
+        if (exp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return null;
+        return ReadPayload(root.Value);
+    }
+
+    public AuthenticatedUser? ReadSignedToken(string token)
+    {
+        var root = ReadVerifiedPayload(token);
+        return root is null ? null : ReadPayload(root.Value);
+    }
+
+    private JsonElement? ReadVerifiedPayload(string token)
+    {
         var parts = token.Split('.');
         if (parts.Length != 3) return null;
 
@@ -63,14 +79,15 @@ public class HorusJwtService(HorusSecurityOptions securityOptions)
         }
 
         using var payload = JsonDocument.Parse(Base64UrlDecode(parts[1]));
-        var root = payload.RootElement;
-        var exp = root.TryGetProperty("exp", out var expElement) ? expElement.GetInt64() : 0;
-        if (exp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return null;
-
+        var root = payload.RootElement.Clone();
         var issuer = root.TryGetProperty("iss", out var issElement) ? issElement.GetString() ?? "" : "";
         var audience = root.TryGetProperty("aud", out var audElement) ? audElement.GetString() ?? "" : "";
         if (issuer != securityOptions.JwtIssuer || audience != securityOptions.JwtAudience) return null;
+        return root;
+    }
 
+    private static AuthenticatedUser? ReadPayload(JsonElement root)
+    {
         var userId = root.TryGetProperty("sub", out var subElement) ? subElement.GetString() ?? "" : "";
         var sessionId = root.TryGetProperty("sessionId", out var sessionElement) ? sessionElement.GetString() ?? "" : "";
         if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(sessionId)) return null;

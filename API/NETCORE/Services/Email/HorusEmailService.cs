@@ -41,7 +41,7 @@ public class HorusEmailService(
 
         await SendEmailAsync(new EmailPayload(
             toEmail,
-            "Recuperação de senha - Hórus PDV",
+            "Recuperação de senha - PDV-Pedimais",
             HorusEmailTemplate.BuildPasswordResetHtml(companyName, resetUrl, expiresAt),
             HorusEmailTemplate.BuildPasswordResetText(companyName, resetUrl, expiresAt)), cancellationToken);
     }
@@ -60,7 +60,7 @@ public class HorusEmailService(
         var loginUrl = ResolveFrontendBaseUrl();
         await SendEmailAsync(new EmailPayload(
             toEmail,
-            "Cadastro criado - Hórus PDV",
+            "Cadastro criado - PDV-Pedimais",
             HorusEmailTemplate.BuildSignupWelcomeHtml(companyName, loginUrl),
             HorusEmailTemplate.BuildSignupWelcomeText(companyName, loginUrl)), cancellationToken);
     }

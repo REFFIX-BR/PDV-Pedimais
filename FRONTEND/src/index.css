@@ -650,6 +650,11 @@
   color: var(--color-action-on-secondary);
 }
 
+.toast-warning {
+  background: #b45309;
+  color: #ffffff;
+}
+
 .toast-loading {
   background: var(--color-action-dark);
   color: #ffffff;

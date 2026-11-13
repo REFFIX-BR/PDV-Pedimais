@@ -56,9 +56,16 @@ public class ProdutoService(ProdutoAB produtosAB, FornecedorAB fornecedoresAB) :
             throw new InvalidOperationException("Fornecedor do produto e obrigatorio.");
         }
 
-        if (!int.TryParse(request.ProductQnt, out var quantity) || quantity <= 0)
+        var quantity = ParseMoney(request.ProductQnt);
+        var unit = NormalizeUnit(request.ProductUnit);
+        if (quantity <= 0)
         {
             throw new InvalidOperationException("Quantidade do produto deve ser maior que zero.");
+        }
+
+        if (unit == "un" && quantity != decimal.Truncate(quantity))
+        {
+            throw new InvalidOperationException("Produto por unidade não aceita quantidade fracionada.");
         }
 
         if (ParseMoney(request.ProductUnitPrice) <= 0)
@@ -102,6 +109,7 @@ public class ProdutoService(ProdutoAB produtosAB, FornecedorAB fornecedoresAB) :
         ProductCode = request.ProductCode.Trim(),
         ProductSupplier = request.ProductSupplier.Trim(),
         ProductDescription = request.ProductDescription.Trim(),
+        ProductUnit = NormalizeUnit(request.ProductUnit),
         ProductQnt = request.ProductQnt,
         ProductUnitPrice = request.ProductUnitPrice,
         ProductSalePrice = request.ProductSalePrice,
@@ -117,11 +125,18 @@ public class ProdutoService(ProdutoAB produtosAB, FornecedorAB fornecedoresAB) :
         ProductCode = source.ProductCode,
         ProductSupplier = source.ProductSupplier,
         ProductDescription = source.ProductDescription,
+        ProductUnit = NormalizeUnit(source.ProductUnit),
         ProductQnt = source.ProductQnt,
         ProductUnitPrice = source.ProductUnitPrice,
         ProductSalePrice = source.ProductSalePrice,
         TotalPriceOnProduct = source.TotalPriceOnProduct
     };
+
+    private static string NormalizeUnit(string? value)
+    {
+        var unit = (value ?? "").Trim().ToLowerInvariant();
+        return unit is "kg" or "l" ? unit : "un";
+    }
 
     private static decimal ParseMoney(string value)
     {

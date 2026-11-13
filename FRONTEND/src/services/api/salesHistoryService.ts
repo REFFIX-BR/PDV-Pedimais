@@ -3,7 +3,7 @@
  * Objetivo: encapsula chamadas HTTP de histórico de vendas, registro de venda e recibos.
  * Entradas esperadas: recebe payloads já validados pelas telas e retorna respostas tipadas da API.
  */
-import { apiRequest } from "./apiClient";
+import { apiRequest, SavedOfflineError } from "./apiClient";
 
 const HISTORICO_VENDAS_API_URL =
   import.meta.env.VITE_HISTORICO_VENDAS_API_URL ?? "http://localhost:5260/api/HistoricoVendas";
@@ -18,6 +18,9 @@ export type SaleHistoryDto = {
   productCode: string;
   productName: string;
   quantity: number;
+  returnedQuantity?: number;
+  status?: string;
+  refundedAmount?: string;
   unitPrice: string;
   itemTotal: string;
   saleDate: string;
@@ -42,11 +45,20 @@ export const salesHistoryService = {
     return response.data ?? [];
   },
   async register(payload: RegisterSalePayload) {
-    const response = await apiRequest<{ saleNumber: string }>(HISTORICO_VENDAS_API_URL, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    return response.data;
+    try {
+      const response = await apiRequest<{ saleNumber: string }>(HISTORICO_VENDAS_API_URL, {
+        method: "POST",
+        body: JSON.stringify(payload),
+        offlineQueue: true,
+      });
+      return { saleNumber: response.data?.saleNumber ?? "", savedOffline: false };
+    } catch (error) {
+      if (!(error instanceof SavedOfflineError)) throw error;
+      return {
+        saleNumber: `LOCAL-${error.localId.slice(0, 6).toUpperCase()}`,
+        savedOffline: true,
+      };
+    }
   },
   async print(saleNumber: string) {
     const response = await apiRequest<{

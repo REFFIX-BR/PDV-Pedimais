@@ -71,6 +71,7 @@ public class AuthController(
             Message = "Login realizado com sucesso.",
             Data = new
             {
+                token,
                 tokenType = "Bearer",
                 expiresInSeconds = jwtService.SessionHours * 60 * 60,
                 sessionId = result.Session.Id,
@@ -135,7 +136,7 @@ public class AuthController(
             {
                 await emailService.SendPasswordResetEmailAsync(
                     request.Email,
-                    "Hórus PDV",
+                    "PDV-Pedimais",
                     resetUrl,
                     resetRequest.ExpiresAt.Value,
                     HttpContext.RequestAborted);
@@ -267,11 +268,55 @@ public class AuthController(
             return Unauthorized(new ApiResponse<object> { Success = false, Message = "Usuario inativo ou inexistente." });
         }
 
+        var token = IssueToken(user, currentUser.SessionId);
         return Ok(new ApiResponse<object>
         {
             Success = true,
             Message = "Usuario autenticado obtido com sucesso.",
-            Data = user
+            Data = new
+            {
+                token,
+                user
+            }
+        });
+    }
+
+    [HttpPost("refresh")]
+    public IActionResult Refresh()
+    {
+        var current = jwtService.ReadSignedToken(ReadRequestToken());
+        if (current is null || !securityStore.IsSessionActive(current.SessionId))
+        {
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Sessão expirada ou token inválido."
+            });
+        }
+
+        var user = securityStore.GetActiveUser(current.Id);
+        if (user is null)
+        {
+            return Unauthorized(new ApiResponse<object>
+            {
+                Success = false,
+                Message = "Usuário inativo ou inexistente."
+            });
+        }
+
+        var token = IssueToken(user, current.SessionId);
+        return Ok(new ApiResponse<object>
+        {
+            Success = true,
+            Message = "Sessão renovada.",
+            Data = new
+            {
+                token,
+                tokenType = "Bearer",
+                expiresInSeconds = jwtService.SessionHours * 60 * 60,
+                sessionId = current.SessionId,
+                user
+            }
         });
     }
 
@@ -354,6 +399,25 @@ public class AuthController(
         {
             return BadRequest(new ApiResponse<object> { Success = false, Message = ex.Message });
         }
+    }
+
+    private string IssueToken(SecurityUserDto user, string sessionId)
+    {
+        var token = jwtService.CreateToken(user, new SecuritySession { Id = sessionId }, GetClientIp());
+        AppendAuthCookie(token, true);
+        return token;
+    }
+
+    private string ReadRequestToken()
+    {
+        var cookieToken = Request.Cookies[HorusJwtService.AuthCookieName];
+        if (!string.IsNullOrWhiteSpace(cookieToken)) return cookieToken;
+
+        var authHeader = Request.Headers.Authorization.ToString();
+        var parts = authHeader.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length == 2 && parts[0].Equals("Bearer", StringComparison.Ordinal)
+            ? parts[1]
+            : "";
     }
 
     private string GetClientIp()

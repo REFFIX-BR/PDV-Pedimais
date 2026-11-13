@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "desktop": "npm --prefix ../desktop start",
     "dev:dev": "vite --mode development",
     "dev:prod": "vite --mode prod",
     "build": "tsc -b && vite build --mode prod",

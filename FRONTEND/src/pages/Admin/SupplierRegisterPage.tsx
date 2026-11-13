@@ -17,6 +17,7 @@ import PageLayout from "@/layout/PageLayout";
 import { supplierService } from "@/services/api/supplierService";
 import { lookupAddressByCep } from "@/utils/cepLookup";
 import { onlyDigits } from "@/utils/inputMasks";
+import { hasFilledValue, readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { isValidCnpj, isValidEmail } from "@/utils/validators";
 
 type Supplier = {
@@ -191,13 +192,22 @@ export default function SupplierRegisterPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<Set<string>>(() => new Set());
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savedSupplierDraft] = useState(() =>
+    readFormDraft<{ open: boolean; editingId: string | null; form: SupplierFormData }>("fornecedor"),
+  );
+  const [drawerOpen, setDrawerOpen] = useState(
+    () => Boolean(savedSupplierDraft?.open) || hasFilledValue(savedSupplierDraft?.form),
+  );
+  const [editingId, setEditingId] = useState<string | null>(() => savedSupplierDraft?.editingId ?? null);
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingSupplierIds, setDeletingSupplierIds] = useState<Set<string>>(() => new Set());
   const [loadingCep, setLoadingCep] = useState(false);
-  const [form, setForm] = useState<SupplierFormData>(EMPTY_FORM);
+  const [form, setForm] = useState<SupplierFormData>(() => ({
+    ...EMPTY_FORM,
+    ...(savedSupplierDraft?.form ?? {}),
+  }));
+  usePersistFormDraft("fornecedor", { open: drawerOpen, editingId, form });
 
   useEffect(() => {
     supplierService
@@ -256,6 +266,10 @@ export default function SupplierRegisterPage() {
   };
 
   const openCreateDrawer = () => {
+    if (editingId === null && hasFilledValue(form)) {
+      setDrawerOpen(true);
+      return;
+    }
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDrawerOpen(true);

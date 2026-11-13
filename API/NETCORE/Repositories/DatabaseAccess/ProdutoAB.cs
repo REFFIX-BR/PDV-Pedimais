@@ -14,7 +14,7 @@ public class ProdutoAB(Connection connection)
     {
         const string sql = """
             SELECT Id, ProductImageUrl, ProductImageName, ProductName, ProductCode, ProductSupplier,
-                   ProductDescription, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct
+                   ProductDescription, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct
             FROM Produtos
             WHERE CompanyId = @CompanyId
             ORDER BY ProductName;
@@ -37,7 +37,7 @@ public class ProdutoAB(Connection connection)
     {
         const string sql = """
             SELECT Id, ProductImageUrl, ProductImageName, ProductName, ProductCode, ProductSupplier,
-                   ProductDescription, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct
+                   ProductDescription, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct
             FROM Produtos
             WHERE Id = @Id AND CompanyId = @CompanyId;
             """;
@@ -64,6 +64,7 @@ public class ProdutoAB(Connection connection)
                        ProductSupplier = @ProductSupplier,
                        SupplierId = @SupplierId,
                        ProductDescription = @ProductDescription,
+                       ProductUnit = @ProductUnit,
                        ProductQnt = @ProductQnt,
                        ProductUnitPrice = @ProductUnitPrice,
                        ProductSalePrice = @ProductSalePrice,
@@ -74,10 +75,10 @@ public class ProdutoAB(Connection connection)
             BEGIN
                 INSERT INTO Produtos
                     (Id, CompanyId, ProductImageUrl, ProductImageName, ProductName, ProductCode, ProductSupplier, SupplierId,
-                     ProductDescription, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct)
+                     ProductDescription, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice, TotalPriceOnProduct)
                 VALUES
                     (@Id, @CompanyId, @ProductImageUrl, @ProductImageName, @ProductName, @ProductCode, @ProductSupplier, @SupplierId,
-                     @ProductDescription, @ProductQnt, @ProductUnitPrice, @ProductSalePrice, @TotalPriceOnProduct);
+                     @ProductDescription, @ProductUnit, @ProductQnt, @ProductUnitPrice, @ProductSalePrice, @TotalPriceOnProduct);
             END;
             """;
 
@@ -98,7 +99,7 @@ public class ProdutoAB(Connection connection)
         return await command.ExecuteNonQueryAsync() > 0;
     }
 
-    public async Task BaixarEstoqueAsync(IEnumerable<(string ProductCode, int Quantity)> items)
+    public async Task BaixarEstoqueAsync(IEnumerable<(string ProductCode, decimal Quantity)> items)
     {
         var groupedItems = items
             .GroupBy(item => item.ProductCode.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -135,7 +136,7 @@ public class ProdutoAB(Connection connection)
 
                 var productId = ReadString(reader, "Id");
                 var productName = ReadString(reader, "ProductName");
-                var currentStock = ParseInt(ReadString(reader, "ProductQnt"));
+                var currentStock = ParseDecimal(ReadString(reader, "ProductQnt"));
                 var unitPrice = ReadString(reader, "ProductUnitPrice");
                 await reader.CloseAsync();
 
@@ -155,7 +156,7 @@ public class ProdutoAB(Connection connection)
                     """,
                     db,
                     transaction);
-                update.Parameters.AddWithValue("@ProductQnt", nextStock.ToString());
+                update.Parameters.AddWithValue("@ProductQnt", FormatQuantity(nextStock));
                 update.Parameters.AddWithValue("@TotalPriceOnProduct", CalculateTotal(unitPrice, nextStock));
                 update.Parameters.AddWithValue("@Id", productId);
                 await update.ExecuteNonQueryAsync();
@@ -196,6 +197,7 @@ public class ProdutoAB(Connection connection)
         command.Parameters.AddWithValue("@ProductSupplier", product.ProductSupplier);
         command.Parameters.AddWithValue("@SupplierId", supplierId is null ? DBNull.Value : supplierId);
         command.Parameters.AddWithValue("@ProductDescription", product.ProductDescription);
+        command.Parameters.AddWithValue("@ProductUnit", string.IsNullOrWhiteSpace(product.ProductUnit) ? "un" : product.ProductUnit);
         command.Parameters.AddWithValue("@ProductQnt", product.ProductQnt);
         command.Parameters.AddWithValue("@ProductUnitPrice", product.ProductUnitPrice);
         command.Parameters.AddWithValue("@ProductSalePrice", product.ProductSalePrice);
@@ -211,6 +213,7 @@ public class ProdutoAB(Connection connection)
         ProductCode = ReadString(source, "ProductCode"),
         ProductSupplier = ReadString(source, "ProductSupplier"),
         ProductDescription = ReadString(source, "ProductDescription"),
+        ProductUnit = ReadString(source, "ProductUnit"),
         ProductQnt = ReadString(source, "ProductQnt"),
         ProductUnitPrice = ReadString(source, "ProductUnitPrice"),
         ProductSalePrice = ReadString(source, "ProductSalePrice"),
@@ -223,10 +226,22 @@ public class ProdutoAB(Connection connection)
         return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
     }
 
-    private static int ParseInt(string value)
-        => int.TryParse(value, out var parsed) ? parsed : 0;
+    private static decimal ParseDecimal(string value)
+    {
+        var normalized = value.Trim().Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(
+            normalized,
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : 0;
+    }
 
-    private static string CalculateTotal(string unitPrice, int quantity)
+    private static string FormatQuantity(decimal quantity)
+        => quantity.ToString("0.###", new System.Globalization.CultureInfo("pt-BR"));
+
+    private static string CalculateTotal(string unitPrice, decimal quantity)
     {
         var normalized = unitPrice.Replace(".", "").Replace(",", ".");
         if (!decimal.TryParse(

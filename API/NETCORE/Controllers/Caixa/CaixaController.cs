@@ -27,8 +27,31 @@ public class CaixaController(HorusCaixaService caixaService) : ControllerBase
         {
             Success = true,
             Message = "Status do caixa obtido com sucesso.",
-            Data = caixaService.GetStatus(currentUser.CompanyId)
+            Data = caixaService.GetStatus(currentUser)
         });
+    }
+
+    [HttpGet("painel")]
+    public IActionResult Painel()
+    {
+        if (HttpContext.Items["CurrentUser"] is not AuthenticatedUser currentUser)
+        {
+            return Unauthorized(new ApiResponse<object> { Success = false, Message = "Sessão não encontrada." });
+        }
+
+        try
+        {
+            return Ok(new ApiResponse<object>
+            {
+                Success = true,
+                Message = "Painel dos caixas obtido com sucesso.",
+                Data = caixaService.Painel(currentUser)
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ApiResponse<object> { Success = false, Message = ex.Message });
+        }
     }
 
     [HttpPost("abrir")]
@@ -69,6 +92,37 @@ public class CaixaController(HorusCaixaService caixaService) : ControllerBase
                 Success = true,
                 Message = "Caixa fechado com sucesso.",
                 Data = caixaService.Fechar(request, currentUser)
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ApiResponse<object> { Success = false, Message = ex.Message });
+        }
+    }
+
+    [HttpPost("suprimento")]
+    public IActionResult Suprimento([FromBody] MovimentoCaixaRequest request)
+        => Lancar("suprimento", request);
+
+    [HttpPost("sangria")]
+    public IActionResult Sangria([FromBody] MovimentoCaixaRequest request)
+        => Lancar("sangria", request);
+
+    private IActionResult Lancar(string movementType, MovimentoCaixaRequest request)
+    {
+        if (HttpContext.Items["CurrentUser"] is not AuthenticatedUser currentUser)
+        {
+            return Unauthorized(new ApiResponse<object> { Success = false, Message = "Sessão não encontrada." });
+        }
+
+        try
+        {
+            var label = movementType == "sangria" ? "Sangria lançada com sucesso." : "Suprimento lançado com sucesso.";
+            return Ok(new ApiResponse<object>
+            {
+                Success = true,
+                Message = label,
+                Data = caixaService.LancarMovimento(movementType, request, currentUser)
             });
         }
         catch (InvalidOperationException ex)

@@ -38,7 +38,7 @@ public class RelatorioAB(Connection connection)
             .Select(group =>
             {
                 var total = group.Sum(item => item.TotalAmount);
-                var count = group.Select(item => item.SaleNumber).Distinct().Count();
+                var count = group.Where(item => item.Status != "Estornada").Select(item => item.SaleNumber).Distinct().Count();
                 return Row(
                     ("periodo", group.Key.Label),
                     ("vendas", count),
@@ -98,7 +98,7 @@ public class RelatorioAB(Connection connection)
             .Select(group =>
             {
                 var total = group.Sum(item => item.TotalAmount);
-                var count = group.Select(item => item.SaleNumber).Distinct().Count();
+                var count = group.Where(item => item.Status != "Estornada").Select(item => item.SaleNumber).Distinct().Count();
                 return Row(
                     ("cliente", group.Key),
                     ("compras", count),
@@ -189,8 +189,8 @@ public class RelatorioAB(Connection connection)
     private async Task<List<ReportSaleRow>> ListarVendasAsync(string companyId)
     {
         const string sql = """
-            SELECT v.SaleNumber, v.CustomerName, v.CustomerCpf, v.PaymentType, v.TotalAmount, v.SaleDate,
-                   i.ProductCode, i.ProductName, i.Quantity, i.UnitPrice, i.ItemTotal
+            SELECT v.SaleNumber, v.CustomerName, v.CustomerCpf, v.PaymentType, v.TotalAmount, v.RefundedAmount, v.Status, v.SaleDate,
+                   i.ProductCode, i.ProductName, i.Quantity, i.ReturnedQuantity, i.UnitPrice, i.ItemTotal
             FROM Vendas v
             LEFT JOIN VendaItens i ON i.VendaId = v.Id
             WHERE v.CompanyId = @CompanyId
@@ -204,18 +204,27 @@ public class RelatorioAB(Connection connection)
         var rows = new List<ReportSaleRow>();
         while (await reader.ReadAsync())
         {
+            var sold = ReadDecimal(reader, "Quantity");
+            var returned = ReadDecimal(reader, "ReturnedQuantity");
+            var remaining = sold - returned;
+            if (remaining < 0) remaining = 0;
+            var itemTotal = ParseMoney(ReadString(reader, "ItemTotal"));
+            var netItem = sold <= 0 ? 0 : itemTotal * remaining / sold;
+            var netSale = ParseMoney(ReadString(reader, "TotalAmount")) - ParseMoney(ReadString(reader, "RefundedAmount"));
+            var status = ReadString(reader, "Status");
             rows.Add(new ReportSaleRow(
                 ReadString(reader, "SaleNumber"),
                 ReadString(reader, "CustomerName"),
                 ReadString(reader, "CustomerCpf"),
                 NormalizePaymentType(ReadString(reader, "PaymentType")),
-                ParseMoney(ReadString(reader, "TotalAmount")),
+                netSale < 0 ? 0 : netSale,
                 reader.GetDateTimeOffset(reader.GetOrdinal("SaleDate")),
                 ReadString(reader, "ProductCode"),
                 ReadString(reader, "ProductName"),
-                ReadInt(reader, "Quantity"),
+                remaining,
                 ParseMoney(ReadString(reader, "UnitPrice")),
-                ParseMoney(ReadString(reader, "ItemTotal"))));
+                netItem,
+                string.IsNullOrWhiteSpace(status) ? "Concluida" : status));
         }
 
         return rows;
@@ -241,7 +250,7 @@ public class RelatorioAB(Connection connection)
                 ReadString(reader, "ProductCode"),
                 ReadString(reader, "ProductName"),
                 ReadString(reader, "ProductSupplier"),
-                ParseInt(ReadString(reader, "ProductQnt")),
+                ParseDecimal(ReadString(reader, "ProductQnt")),
                 ParseMoney(ReadString(reader, "ProductUnitPrice")),
                 ParseMoney(ReadString(reader, "ProductSalePrice"))));
         }
@@ -348,6 +357,20 @@ public class RelatorioAB(Connection connection)
         return reader.IsDBNull(ordinal) ? 0 : reader.GetInt32(ordinal);
     }
 
+    private static decimal ReadDecimal(SqlDataReader reader, string name)
+    {
+        var ordinal = reader.GetOrdinal(name);
+        return reader.IsDBNull(ordinal) ? 0 : reader.GetDecimal(ordinal);
+    }
+
+    private static decimal ParseDecimal(string value)
+    {
+        var normalized = value.Trim().Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 0;
+    }
+
     private static int ParseInt(string value)
         => int.TryParse(value, out var parsed) ? parsed : 0;
 
@@ -424,15 +447,16 @@ public class RelatorioAB(Connection connection)
         DateTimeOffset SaleDate,
         string ProductCode,
         string ProductName,
-        int Quantity,
+        decimal Quantity,
         decimal UnitPrice,
-        decimal ItemTotal);
+        decimal ItemTotal,
+        string Status);
 
     private sealed record ReportProductRow(
         string Code,
         string Name,
         string Supplier,
-        int Quantity,
+        decimal Quantity,
         decimal UnitPrice,
         decimal SalePrice);
 

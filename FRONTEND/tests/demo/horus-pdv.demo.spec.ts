@@ -223,6 +223,13 @@ async function advancedModulesCrud(page: Page) {
     const recordTitle = `${RUN_ID} ${title}`;
     const editedTitle = `${recordTitle} Editado`;
     await openAppPage(page, key, title);
+    if (key === "devolucoes") {
+      await caption(page, "Devolução de venda paga, com estoque e estorno");
+      await page.getByRole("button", { name: action, exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Nova devolução", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Fechar", exact: true }).click();
+      continue;
+    }
     await caption(page, `${title}: criar, editar e excluir registro`);
     await page.getByRole("button", { name: action, exact: true }).click();
     await page.getByLabel("Título").fill(recordTitle);
@@ -256,7 +263,7 @@ async function openCashRegister(page: Page, request: APIRequestContext) {
 async function completeSale(page: Page, request: APIRequestContext) {
   await caption(page, "Frente de caixa: adicionar produto e confirmar pagamento");
   await page.goto(`${APP_URL}?pdv=1`);
-  await expect(page.getByRole("heading", { name: /Hórus PDV/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /PDV-Pedimais/i })).toBeVisible();
   await page.getByLabel(/^Produto:/i).fill(demo.productCode);
   await page.getByText(demo.productEditedName, { exact: true }).click();
   await page.getByLabel(/quantidade/i).fill("2");
@@ -284,7 +291,7 @@ async function historyAndReports(page: Page) {
 
 async function finishOnHome(page: Page) {
   await openAppPage(page, "home", "Home");
-  await caption(page, "Hórus PDV pronto para operação de balcão");
+  await caption(page, "PDV-Pedimais pronto para operação de balcão");
   await pause(page, 1_200);
 }
 

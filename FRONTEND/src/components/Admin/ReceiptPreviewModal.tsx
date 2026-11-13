@@ -25,6 +25,7 @@ export type SaleReceiptItem = {
   code: string;
   name: string;
   quantity: number;
+  quantityLabel?: string;
   unitPrice: number;
   total: number;
 };
@@ -68,7 +69,7 @@ function escapeHtml(value: string) {
 
 function buildReceiptPrintHtml(receipt: SaleReceipt, formatMoney: (value: number) => string) {
   const companyName =
-    receipt.company?.fantasyName || receipt.company?.corporateName || "Horus PDV";
+    receipt.company?.fantasyName || receipt.company?.corporateName || "PDV-Pedimais";
   const companyAddress = [
     receipt.company?.address,
     receipt.company?.number,
@@ -84,7 +85,7 @@ function buildReceiptPrintHtml(receipt: SaleReceipt, formatMoney: (value: number
           <div class="line grid">
             <span>${String(index + 1).padStart(2, "0")}</span>
             <span>${escapeHtml(item.name)}</span>
-            <span class="right">${item.quantity}</span>
+            <span class="right">${escapeHtml(item.quantityLabel || String(item.quantity))}</span>
             <span class="right">${formatMoney(item.total)}</span>
           </div>
           <div class="item-meta">${escapeHtml(item.code)} - UN ${formatMoney(item.unitPrice)}</div>
@@ -166,7 +167,7 @@ export default function ReceiptPreviewModal({
   onClose: () => void;
 }) {
   const companyName =
-    receipt.company?.fantasyName || receipt.company?.corporateName || "Horus PDV";
+    receipt.company?.fantasyName || receipt.company?.corporateName || "PDV-Pedimais";
   const companyAddress = [
     receipt.company?.address,
     receipt.company?.number,
@@ -243,11 +244,11 @@ export default function ReceiptPreviewModal({
                     <div className="grid grid-cols-[28px_1fr_44px_64px] gap-1">
                       <span>{String(index + 1).padStart(2, "0")}</span>
                       <span className="truncate">{item.name}</span>
-                      <span className="text-right">{item.quantity}</span>
+                      <span className="text-right">{item.quantityLabel || item.quantity}</span>
                       <span className="text-right">{formatMoney(item.total)}</span>
                     </div>
                     <p className="pl-7 text-[11px]">
-                      {item.code} - UN {formatMoney(item.unitPrice)}
+                      {item.code} - {item.quantityLabel || `${item.quantity} un`} x {formatMoney(item.unitPrice)}
                     </p>
                   </div>
                 ))}

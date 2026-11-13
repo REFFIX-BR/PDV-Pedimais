@@ -21,6 +21,7 @@ import { useStatusDialog } from "@/hooks/Dialog";
 import LoadingBar from "@/components/Loading/LoadingBar";
 import PageLayout from "@/layout/PageLayout";
 import { userService } from "@/services/api/userService";
+import { hasFilledValue, readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { onlyDigits } from "@/utils/inputMasks";
 
 const UsersFilters = lazy(() => import("@/components/Admin/UsersPage/UsersFilters"));
@@ -67,9 +68,24 @@ export default function UserAccountsPage() {
   );
   const [showResetFeedback, setShowResetFeedback] = useState(false);
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [form, setForm] = useState<UserFormState>(defaultForm);
+  const [savedUserDraft] = useState(() =>
+    readFormDraft<{ open: boolean; editingId: string | null; form: UserFormState }>("usuario"),
+  );
+  const [drawerOpen, setDrawerOpen] = useState(
+    () => Boolean(savedUserDraft?.open) || hasFilledValue(savedUserDraft?.form),
+  );
+  const [editingUserId, setEditingUserId] = useState<string | null>(() => savedUserDraft?.editingId ?? null);
+  const [form, setForm] = useState<UserFormState>(() => ({
+    ...defaultForm(),
+    ...(savedUserDraft?.form ?? {}),
+    password: "",
+    confirmPassword: "",
+  }));
+  usePersistFormDraft("usuario", {
+    open: drawerOpen,
+    editingId: editingUserId,
+    form: { ...form, password: "", confirmPassword: "" },
+  });
   const [pendingDeactivateUser, setPendingDeactivateUser] = useState<AdminUser | null>(null);
   const [deactivationReason, setDeactivationReason] = useState("");
 
@@ -152,6 +168,10 @@ export default function UserAccountsPage() {
   };
 
   const openCreateDrawer = () => {
+    if (editingUserId === null && hasFilledValue(form)) {
+      setDrawerOpen(true);
+      return;
+    }
     setEditingUserId(null);
     setForm(defaultForm());
     setDrawerOpen(true);

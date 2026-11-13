@@ -51,6 +51,7 @@ BEGIN
         ProductSupplier NVARCHAR(180) NOT NULL CONSTRAINT DF_Produtos_ProductSupplier DEFAULT N'',
         SupplierId NVARCHAR(40) NULL,
         ProductDescription NVARCHAR(500) NOT NULL CONSTRAINT DF_Produtos_ProductDescription DEFAULT N'',
+        ProductUnit NVARCHAR(10) NOT NULL CONSTRAINT DF_Produtos_ProductUnit DEFAULT N'un',
         ProductQnt NVARCHAR(30) NOT NULL CONSTRAINT DF_Produtos_ProductQnt DEFAULT N'0',
         ProductUnitPrice NVARCHAR(30) NOT NULL CONSTRAINT DF_Produtos_ProductUnitPrice DEFAULT N'0,00',
         ProductSalePrice NVARCHAR(30) NOT NULL CONSTRAINT DF_Produtos_ProductSalePrice DEFAULT N'0,00',
@@ -64,6 +65,16 @@ IF COL_LENGTH(N'Produtos', N'CompanyId') IS NULL
 BEGIN
     ALTER TABLE Produtos ADD CompanyId NVARCHAR(40) NOT NULL CONSTRAINT DF_Produtos_CompanyId DEFAULT N'empresa-principal';
 END;
+
+IF COL_LENGTH(N'Produtos', N'ProductUnit') IS NULL
+    ALTER TABLE Produtos ADD ProductUnit NVARCHAR(10) NOT NULL CONSTRAINT DF_Produtos_ProductUnit DEFAULT N'un';
+
+GO
+
+UPDATE Produtos
+   SET ProductUnit = N'kg'
+ WHERE ProductCode IN (N'2001', N'2002', N'2003', N'2005', N'2006')
+   AND ProductUnit <> N'kg';
 
 IF OBJECT_ID(N'Clientes', N'U') IS NULL
 BEGIN
@@ -248,6 +259,24 @@ BEGIN
     ALTER TABLE CaixaSessoes ADD CompanyId NVARCHAR(40) NOT NULL CONSTRAINT DF_CaixaSessoes_CompanyId DEFAULT N'empresa-principal';
 END;
 
+IF OBJECT_ID(N'CaixaMovimentos', N'U') IS NULL
+BEGIN
+    CREATE TABLE CaixaMovimentos
+    (
+        Id NVARCHAR(40) NOT NULL CONSTRAINT PK_CaixaMovimentos PRIMARY KEY,
+        CompanyId NVARCHAR(40) NOT NULL,
+        SessionId NVARCHAR(40) NOT NULL,
+        MovementType NVARCHAR(20) NOT NULL,
+        Amount NVARCHAR(30) NOT NULL,
+        Reason NVARCHAR(180) NOT NULL,
+        OperatorId NVARCHAR(40) NOT NULL,
+        OperatorName NVARCHAR(180) NOT NULL CONSTRAINT DF_CaixaMovimentos_OperatorName DEFAULT N'',
+        CreatedAt DATETIMEOFFSET NOT NULL,
+        CONSTRAINT FK_CaixaMovimentos_CaixaSessoes FOREIGN KEY (SessionId) REFERENCES CaixaSessoes (Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_CaixaMovimentos_SessionId ON CaixaMovimentos (SessionId, CreatedAt);
+END;
+
 IF OBJECT_ID(N'Vendas', N'U') IS NULL
 BEGIN
     CREATE TABLE Vendas
@@ -285,7 +314,7 @@ BEGIN
         VendaId NVARCHAR(40) NOT NULL,
         ProductCode NVARCHAR(80) NOT NULL,
         ProductName NVARCHAR(180) NOT NULL,
-        Quantity INT NOT NULL,
+        Quantity DECIMAL(18, 3) NOT NULL,
         UnitPrice NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_UnitPrice DEFAULT N'0,00',
         ItemTotal NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_ItemTotal DEFAULT N'0,00',
         CONSTRAINT FK_VendaItens_Vendas FOREIGN KEY (VendaId) REFERENCES Vendas (Id) ON DELETE CASCADE
@@ -297,6 +326,16 @@ IF COL_LENGTH(N'VendaItens', N'UnitPrice') IS NULL
     ALTER TABLE VendaItens ADD UnitPrice NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_UnitPrice DEFAULT N'0,00';
 IF COL_LENGTH(N'VendaItens', N'ItemTotal') IS NULL
     ALTER TABLE VendaItens ADD ItemTotal NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_ItemTotal DEFAULT N'0,00';
+
+IF EXISTS (
+    SELECT 1
+    FROM sys.columns AS column_info
+    INNER JOIN sys.types AS type_info ON column_info.user_type_id = type_info.user_type_id
+    WHERE column_info.object_id = OBJECT_ID(N'VendaItens')
+      AND column_info.name = N'Quantity'
+      AND type_info.name = N'int'
+)
+    ALTER TABLE VendaItens ALTER COLUMN Quantity DECIMAL(18, 3) NOT NULL;
 
 GO
 
@@ -344,7 +383,7 @@ BEGIN
         Description NVARCHAR(500) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_Description DEFAULT N'',
         Status NVARCHAR(80) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_Status DEFAULT N'',
         Amount NVARCHAR(40) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_Amount DEFAULT N'',
-        Meta NVARCHAR(180) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_Meta DEFAULT N'',
+        Meta NVARCHAR(MAX) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_Meta DEFAULT N'',
         CONSTRAINT FK_ModuloMercadoRegistros_ModulosMercado FOREIGN KEY (ModuleId) REFERENCES ModulosMercado (Id) ON DELETE CASCADE
     );
     CREATE INDEX IX_ModuloMercadoRegistros_ModuleId ON ModuloMercadoRegistros (ModuleId);
@@ -353,6 +392,20 @@ END;
 IF COL_LENGTH(N'ModuloMercadoRegistros', N'CompanyId') IS NULL
 BEGIN
     ALTER TABLE ModuloMercadoRegistros ADD CompanyId NVARCHAR(40) NOT NULL CONSTRAINT DF_ModuloMercadoRegistros_CompanyId DEFAULT N'empresa-principal';
+END;
+
+IF EXISTS (
+    SELECT 1
+    FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'ModuloMercadoRegistros')
+      AND name = N'Meta'
+      AND max_length <> -1
+)
+BEGIN
+    IF OBJECT_ID(N'DF_ModuloMercadoRegistros_Meta', N'D') IS NOT NULL
+        ALTER TABLE ModuloMercadoRegistros DROP CONSTRAINT DF_ModuloMercadoRegistros_Meta;
+    ALTER TABLE ModuloMercadoRegistros ALTER COLUMN Meta NVARCHAR(MAX) NOT NULL;
+    ALTER TABLE ModuloMercadoRegistros ADD CONSTRAINT DF_ModuloMercadoRegistros_Meta DEFAULT N'' FOR Meta;
 END;
 
 IF EXISTS (SELECT 1 FROM Usuarios WHERE Id = N'usr-001')
@@ -417,4 +470,47 @@ BEGIN
          N'Avenida Paulista', N'1578', N'Bela Vista', N'São Paulo', N'SP', N'Próximo ao MASP',
          0, N'smtp-mail.outlook.com', 587, 1, N'', N'', N'naoresponderhoruspdv@outlook.com',
          N'Hórus PDV', N'');
+END;
+
+IF COL_LENGTH(N'Vendas', N'Status') IS NULL
+    ALTER TABLE Vendas ADD Status NVARCHAR(20) NOT NULL CONSTRAINT DF_Vendas_Status DEFAULT N'Concluida';
+IF COL_LENGTH(N'Vendas', N'RefundedAmount') IS NULL
+    ALTER TABLE Vendas ADD RefundedAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_RefundedAmount DEFAULT N'0,00';
+IF COL_LENGTH(N'VendaItens', N'ReturnedQuantity') IS NULL
+    ALTER TABLE VendaItens ADD ReturnedQuantity DECIMAL(18, 3) NOT NULL CONSTRAINT DF_VendaItens_ReturnedQuantity DEFAULT 0;
+
+IF OBJECT_ID(N'Devolucoes', N'U') IS NULL
+BEGIN
+    CREATE TABLE Devolucoes
+    (
+        Id NVARCHAR(40) NOT NULL CONSTRAINT PK_Devolucoes PRIMARY KEY,
+        CompanyId NVARCHAR(40) NOT NULL,
+        SaleNumber NVARCHAR(30) NOT NULL,
+        Kind NVARCHAR(20) NOT NULL,
+        Reason NVARCHAR(180) NOT NULL,
+        RefundAmount NVARCHAR(30) NOT NULL,
+        ChargeAmount NVARCHAR(30) NOT NULL,
+        PaymentType NVARCHAR(30) NOT NULL,
+        OperatorId NVARCHAR(40) NOT NULL,
+        OperatorName NVARCHAR(180) NOT NULL,
+        CreatedAt DATETIMEOFFSET NOT NULL
+    );
+    CREATE INDEX IX_Devolucoes_CompanyId ON Devolucoes (CompanyId, CreatedAt);
+END;
+
+IF OBJECT_ID(N'DevolucaoItens', N'U') IS NULL
+BEGIN
+    CREATE TABLE DevolucaoItens
+    (
+        Id NVARCHAR(40) NOT NULL CONSTRAINT PK_DevolucaoItens PRIMARY KEY,
+        DevolucaoId NVARCHAR(40) NOT NULL,
+        Direction NVARCHAR(10) NOT NULL,
+        ProductCode NVARCHAR(80) NOT NULL,
+        ProductName NVARCHAR(180) NOT NULL,
+        Quantity DECIMAL(18, 3) NOT NULL,
+        UnitPrice NVARCHAR(30) NOT NULL,
+        ItemTotal NVARCHAR(30) NOT NULL,
+        CONSTRAINT FK_DevolucaoItens_Devolucoes FOREIGN KEY (DevolucaoId) REFERENCES Devolucoes (Id) ON DELETE CASCADE
+    );
+    CREATE INDEX IX_DevolucaoItens_DevolucaoId ON DevolucaoItens (DevolucaoId);
 END;

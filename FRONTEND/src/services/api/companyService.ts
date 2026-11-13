@@ -39,7 +39,7 @@ export type CompanyDto = {
 
 export const companyService = {
   async get() {
-    const response = await apiRequest<CompanyDto>(EMPRESA_API_URL);
+    const response = await apiRequest<CompanyDto>(EMPRESA_API_URL, { cacheKey: "company" });
     return response.data;
   },
   async update(payload: CompanyDto) {

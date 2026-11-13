@@ -16,9 +16,15 @@ export type LoginPayload = {
 };
 
 export type LoginResponse = {
+  token: string;
   tokenType: "Bearer";
   expiresInSeconds: number;
   sessionId: string;
+  user: AuthenticatedUser;
+};
+
+export type CurrentSession = {
+  token: string;
   user: AuthenticatedUser;
 };
 
@@ -50,7 +56,7 @@ export const authService = {
   },
 
   async me() {
-    const response = await apiRequest<AuthenticatedUser>(`${AUTH_API_URL}/me`);
+    const response = await apiRequest<CurrentSession>(`${AUTH_API_URL}/me`);
     return response.data;
   },
 

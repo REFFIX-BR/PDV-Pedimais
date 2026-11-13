@@ -15,3 +15,9 @@ public class FecharCaixaRequest
     public string ClosingAmount { get; set; } = "0,00";
     public string Note { get; set; } = "";
 }
+
+public class MovimentoCaixaRequest
+{
+    public string Amount { get; set; } = "0,00";
+    public string Reason { get; set; } = "";
+}

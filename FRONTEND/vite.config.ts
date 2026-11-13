@@ -44,6 +44,10 @@ export default defineConfig({
     assetsInlineLimit: 4096,
     cssCodeSplit: true,
     rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL("./index.html", import.meta.url)),
+        site: fileURLToPath(new URL("./site.html", import.meta.url)),
+      },
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
@@ -64,5 +68,37 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "pdv-site-route",
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          const path = req.url?.split("?")[0];
+          if (path === "/site" || path === "/site/" || path === "/site/precos" || path === "/site/precos/") {
+            req.url = "/site.html";
+          }
+          next();
+        });
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          const path = req.url?.split("?")[0];
+          if (path === "/site" || path === "/site/" || path === "/site/precos" || path === "/site/precos/") {
+            req.url = "/site.html";
+          }
+          next();
+        });
+      },
+    },
+  ],
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:5260",
+        changeOrigin: true,
+      },
+    },
+  },
 });

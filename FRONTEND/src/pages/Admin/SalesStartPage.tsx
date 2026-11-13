@@ -5,16 +5,10 @@
  */
 
 import { Image as ImageIcon, Printer, Search, Trash2, X } from "lucide-react";
-import {
-  type ClipboardEvent,
-  type FormEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { SearchableSelectField } from "@/components/Form";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import LowStockBanner from "@/components/Stock/LowStockBanner";
+import LowStockBell from "@/components/Stock/LowStockBell";
+import { isLowStock, notifyStockChanged } from "@/domain/stock/lowStock";
 import { Toast, useStatusDialog } from "@/hooks/Dialog";
 import useInputMasks from "@/hooks/InputMasks/useInputMasks";
 import {
@@ -26,8 +20,10 @@ import ReceiptPreviewModal, {
   type SaleReceipt,
 } from "@/components/Admin/ReceiptPreviewModal";
 import { companyService, type CompanyDto } from "@/services/api/companyService";
-import { productService } from "@/services/api/productService";
+import { productService, reduceCachedProductStock } from "@/services/api/productService";
+import { OUTBOX_SENT_EVENT } from "@/services/offline/outbox";
 import { salesHistoryService } from "@/services/api/salesHistoryService";
+import { readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { getPrintPreviewEnabled } from "@/utils/pdvPreferences";
 
 type SalesStartPageProps = {
@@ -36,21 +32,31 @@ type SalesStartPageProps = {
   operatorName?: string;
 };
 
+type MeasureUnit = "un" | "kg" | "l";
+
 type Product = {
   id: string;
   name: string;
   code: string;
+  unit: MeasureUnit;
   stock: number;
   salePrice: number;
   imageUrl?: string;
 };
 
+const ML_PER_LIQUID_UNIT = 1000;
+
 type CartItem = {
   id: string;
   code: string;
   name: string;
+  unit: MeasureUnit;
   quantity: number;
+  stockQuantity: number;
+  deductMl?: number;
   unitPrice: number;
+  discount: number;
+  surcharge: number;
 };
 
 const PAYMENT_OPTIONS: Array<{ value: PaymentType; label: string }> = [
@@ -77,11 +83,111 @@ function formatDateTime(date: Date) {
   };
 }
 
-function preventNonDigitBeforeInput(event: FormEvent<HTMLInputElement>) {
-  const data = (event.nativeEvent as InputEvent).data ?? "";
-  if (data && /\D/.test(data)) {
-    event.preventDefault();
+function normalizeUnit(value?: string): MeasureUnit {
+  const unit = (value || "").trim().toLowerCase();
+  if (unit === "kg" || unit === "quilo") return "kg";
+  if (unit === "l" || unit === "litro" || unit === "lt") return "l";
+  return "un";
+}
+
+function parseQuantity(value: string) {
+  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMeasure(value: number, unit: MeasureUnit) {
+  if (unit === "un") return String(Math.round(value));
+  const small = Math.round(value * 1000);
+  if (small > 0 && small < 1000) {
+    return unit === "kg"
+      ? `${small.toLocaleString("pt-BR")} g`
+      : `${small.toLocaleString("pt-BR")} ml`;
   }
+  const rounded = Math.round(value * 1000) / 1000;
+  const formatted = Number.isInteger(rounded)
+    ? rounded.toLocaleString("pt-BR")
+    : rounded.toLocaleString("pt-BR", {
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3,
+      });
+  return unit === "kg" ? `${formatted} kg` : `${formatted} L`;
+}
+
+function equivalenceLabel(value: number, unit: MeasureUnit) {
+  if (value <= 0 || unit === "un") return "";
+  const small = Math.round(value * 1000);
+  const base = Math.round(value * 1000) / 1000;
+  const baseText = Number.isInteger(base)
+    ? base.toLocaleString("pt-BR")
+    : base.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return unit === "kg"
+    ? `${small.toLocaleString("pt-BR")} g = ${baseText} kg`
+    : `${small.toLocaleString("pt-BR")} ml = ${baseText} L`;
+}
+
+function stockMovement(unit: MeasureUnit, amount: number) {
+  if (unit === "l") return (amount * ML_PER_LIQUID_UNIT) / 1000;
+  return amount;
+}
+
+function lineGross(item: CartItem) {
+  return item.quantity * item.unitPrice;
+}
+
+function lineAmount(item: CartItem) {
+  return Math.max(0, lineGross(item) - item.discount + item.surcharge);
+}
+
+function parseCouponAdjustment(raw: string, base: number) {
+  const text = raw.trim().replace(/\s/g, "");
+  if (!text) return null;
+  if (text.endsWith("%")) {
+    const percent = Number(text.slice(0, -1).replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(percent) || percent <= 0) return null;
+    return Math.round(base * percent) / 100;
+  }
+  const money = Number(text.replace(/\./g, "").replace(",", "."));
+  if (!Number.isFinite(money) || money <= 0) return null;
+  return money;
+}
+
+function lineMeasureLabel(item: CartItem) {
+  if (item.deductMl) {
+    const ml = Math.round(item.quantity * item.deductMl);
+    return `${item.quantity} un (${ml.toLocaleString("pt-BR")} ml)`;
+  }
+  return formatMeasure(item.quantity, item.unit);
+}
+
+function reservedStock(cart: CartItem[], productId: string) {
+  return cart.filter((item) => item.id === productId).reduce((sum, item) => sum + item.stockQuantity, 0);
+}
+
+function quantityFieldLabel(unit: MeasureUnit) {
+  if (unit === "kg") return "Peso (g)";
+  return "Quantidade";
+}
+
+function measureHint(unit: MeasureUnit, value: number) {
+  if (value > 0) return equivalenceLabel(value, unit);
+  if (unit === "kg") return "500 = 500 g · 1000 = 1 kg";
+  if (unit === "l") return "500 = 500 ml · 1000 = 1 L";
+  return "";
+}
+
+function missingMeasureMessage(unit: MeasureUnit) {
+  if (unit === "kg") return "Informe o peso em gramas. 500 é meio quilo e 1000 é 1 kg.";
+  return "Informe a quantidade.";
+}
+
+function priceFieldLabel(unit: MeasureUnit) {
+  if (unit === "kg") return "Preço por kg";
+  return "Preço unitário";
+}
+
+function sanitizeMeasureInput(value: string, unit: MeasureUnit) {
+  return value.replace(/\D/g, "").slice(0, unit === "kg" ? 7 : 4);
 }
 
 function getPaymentLabel(paymentType: PaymentType) {
@@ -97,39 +203,69 @@ function formatCashElapsed(minutes?: number) {
 }
 
 export default function SalesStartPage({
-  standalone = false,
   operatorName = "Operador",
 }: SalesStartPageProps) {
-  const { formatMoneyBr, maskMoneyBr, parseMoneyBr, sanitizeIntegerInput } = useInputMasks();
+  const { formatMoneyBr, maskMoneyBr, parseMoneyBr } = useInputMasks();
   const statusDialog = useStatusDialog();
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
+  const openProductListRef = useRef(false);
 
+  const [savedSale] = useState(() =>
+    readFormDraft<{
+      productSearch: string;
+      selectedProductId: string;
+      quantityInput: string;
+      cart: CartItem[];
+      lineAdjustment: null | "discount" | "surcharge";
+      adjustmentInput: string;
+      checkoutOpen: boolean;
+      paymentType: PaymentType;
+      cpfNota: string;
+      cashGiven: string;
+    }>("venda"),
+  );
   const [now, setNow] = useState(new Date());
-  const [productSearch, setProductSearch] = useState("");
+  const [productSearch, setProductSearch] = useState(() => savedSale?.productSearch ?? "");
   const [products, setProducts] = useState<Product[]>([]);
   const [company, setCompany] = useState<CompanyDto | null>(null);
   const [cashStatus, setCashStatus] = useState<CashRegisterStatusDto | null>(null);
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState(() => savedSale?.selectedProductId ?? "");
   const [showProductOptions, setShowProductOptions] = useState(false);
   const [highlightedProductIndex, setHighlightedProductIndex] = useState(0);
-  const [quantityInput, setQuantityInput] = useState("1");
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [quantityInput, setQuantityInput] = useState(() => savedSale?.quantityInput || "1");
+  const [cart, setCart] = useState<CartItem[]>(() => (Array.isArray(savedSale?.cart) ? savedSale.cart : []));
+  const [lineAdjustment, setLineAdjustment] = useState<null | "discount" | "surcharge">(
+    () => savedSale?.lineAdjustment ?? null,
+  );
+  const [adjustmentInput, setAdjustmentInput] = useState(() => savedSale?.adjustmentInput ?? "");
 
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [paymentType, setPaymentType] = useState<PaymentType>("dinheiro");
-  const [cpfNota, setCpfNota] = useState("");
-  const [cashGiven, setCashGiven] = useState("");
+  const [checkoutOpen, setCheckoutOpen] = useState(() => Boolean(savedSale?.checkoutOpen));
+  const [paymentType, setPaymentType] = useState<PaymentType>(() => {
+    const value = savedSale?.paymentType;
+    return value === "pix" || value === "debito" || value === "credito" || value === "dinheiro"
+      ? value
+      : "dinheiro";
+  });
+  const [cpfNota, setCpfNota] = useState(() => savedSale?.cpfNota ?? "");
+  const [cashGiven, setCashGiven] = useState(() => savedSale?.cashGiven ?? "");
+  usePersistFormDraft("venda", {
+    productSearch,
+    selectedProductId,
+    quantityInput,
+    cart,
+    lineAdjustment,
+    adjustmentInput,
+    checkoutOpen,
+    paymentType,
+    cpfNota,
+    cashGiven,
+  });
   const [lastReceipt, setLastReceipt] = useState<SaleReceipt | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<SaleReceipt | null>(null);
   const [printPreviewEnabled, setPrintPreviewEnabled] = useState(() =>
     getPrintPreviewEnabled(),
   );
-
-  const pasteCashGiven = (event: ClipboardEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    setCashGiven(maskMoneyBr(event.clipboardData.getData("text")));
-  };
 
   const selectedProduct = useMemo(
     () => products.find((item) => item.id === selectedProductId) ?? null,
@@ -137,10 +273,15 @@ export default function SalesStartPage({
   );
 
   const quantity = useMemo(() => {
-    const parsed = Number(quantityInput);
-    if (!Number.isFinite(parsed) || parsed < 1) return 1;
-    return Math.floor(parsed);
-  }, [quantityInput]);
+    const parsed = parseQuantity(quantityInput);
+    const byUnit = !selectedProduct || selectedProduct.unit !== "kg";
+    if (byUnit) {
+      if (!Number.isFinite(parsed) || parsed < 1) return quantityInput.trim() ? 0 : 1;
+      return Math.floor(parsed);
+    }
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.round(parsed) / 1000;
+  }, [quantityInput, selectedProduct]);
 
   const filteredProducts = useMemo(() => {
     const normalized = productSearch.trim().toLowerCase();
@@ -153,7 +294,7 @@ export default function SalesStartPage({
   }, [products, productSearch]);
 
   const subtotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
+    () => cart.reduce((sum, item) => sum + lineAmount(item), 0),
     [cart],
   );
   const totalVolumes = useMemo(
@@ -181,7 +322,8 @@ export default function SalesStartPage({
         id: item.id,
         name: item.productName,
         code: item.productCode,
-        stock: Number(item.productQnt || 0),
+        unit: normalizeUnit(item.productUnit || item.productDescription),
+        stock: parseQuantity(item.productQnt || "0"),
         salePrice: parseMoneyBr(item.productSalePrice || "0"),
         imageUrl: item.productImageUrl,
       })),
@@ -208,6 +350,15 @@ export default function SalesStartPage({
       Toast.error("Não foi possível validar a abertura de caixa.");
     });
   }, [loadCashStatus]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadProducts().catch(() => undefined);
+      void loadCashStatus().catch(() => undefined);
+    };
+    window.addEventListener(OUTBOX_SENT_EVENT, refresh);
+    return () => window.removeEventListener(OUTBOX_SENT_EVENT, refresh);
+  }, [loadCashStatus, loadProducts]);
 
   useEffect(() => {
     companyService
@@ -255,16 +406,6 @@ export default function SalesStartPage({
   }, []);
 
   useEffect(() => {
-    if (!standalone) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [standalone]);
-
-  useEffect(() => {
     if (filteredProducts.length === 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setHighlightedProductIndex(-1);
@@ -282,6 +423,7 @@ export default function SalesStartPage({
     setProductSearch(product.name);
     setShowProductOptions(false);
     setHighlightedProductIndex(0);
+    setQuantityInput(product.unit === "kg" ? "" : "1");
     qtyInputRef.current?.focus();
   };
 
@@ -299,13 +441,28 @@ export default function SalesStartPage({
       Toast.error("Selecione um produto.");
       return;
     }
-    if (quantity > matchedFromSearch.stock) {
-      Toast.error(`Estoque insuficiente. Disponível: ${matchedFromSearch.stock}.`);
+    const lineUnit: MeasureUnit = matchedFromSearch.unit === "l" ? "un" : matchedFromSearch.unit;
+    const movement = stockMovement(matchedFromSearch.unit, quantity);
+    if (quantity <= 0 || movement <= 0) {
+      Toast.error(missingMeasureMessage(lineUnit === "un" ? "un" : matchedFromSearch.unit));
       return;
+    }
+    const alreadyReserved = reservedStock(cart, matchedFromSearch.id);
+    if (alreadyReserved + movement > matchedFromSearch.stock) {
+      Toast.error(`Estoque insuficiente. Disponível: ${formatMeasure(matchedFromSearch.stock - alreadyReserved, matchedFromSearch.unit)}.`);
+      return;
+    }
+    const remaining = matchedFromSearch.stock - alreadyReserved - movement;
+    if (isLowStock(remaining)) {
+      Toast.warning(
+        remaining <= 0
+          ? `${matchedFromSearch.name} vai zerar o estoque.`
+          : `${matchedFromSearch.name} ficará com estoque baixo: ${formatMeasure(remaining, matchedFromSearch.unit)}.`,
+      );
     }
 
     setCart((current) => {
-      const existing = current.find((item) => item.id === matchedFromSearch.id);
+      const existing = current.find((item) => item.id === matchedFromSearch.id && item.unit === lineUnit);
       if (!existing) {
         return [
           ...current,
@@ -313,18 +470,24 @@ export default function SalesStartPage({
             id: matchedFromSearch.id,
             code: matchedFromSearch.code,
             name: matchedFromSearch.name,
+            unit: lineUnit,
             quantity,
+            stockQuantity: movement,
+            deductMl: matchedFromSearch.unit === "l" ? ML_PER_LIQUID_UNIT : undefined,
             unitPrice: matchedFromSearch.salePrice,
+            discount: 0,
+            surcharge: 0,
           },
         ];
       }
-      const nextQuantity = existing.quantity + quantity;
-      if (nextQuantity > matchedFromSearch.stock) {
-        Toast.error(`Estoque insuficiente para ${matchedFromSearch.name}.`);
-        return current;
-      }
       return current.map((item) =>
-        item.id === matchedFromSearch.id ? { ...item, quantity: nextQuantity } : item,
+        item.id === matchedFromSearch.id && item.unit === lineUnit
+          ? {
+              ...item,
+              quantity: item.quantity + quantity,
+              stockQuantity: item.stockQuantity + movement,
+            }
+          : item,
       );
     });
 
@@ -333,7 +496,7 @@ export default function SalesStartPage({
     setShowProductOptions(false);
     setQuantityInput("1");
     productInputRef.current?.focus();
-  }, [filteredProducts, productSearch, quantity, selectedProduct]);
+  }, [cart, filteredProducts, productSearch, quantity, selectedProduct]);
 
   const removeItem = (id: string) => {
     setCart((current) => current.filter((item) => item.id !== id));
@@ -377,7 +540,7 @@ export default function SalesStartPage({
       const latestCashStatus = await loadCashStatus();
       if (!latestCashStatus?.canSell) {
         Toast.error(
-          latestCashStatus?.blockReason || "Abra o caixa antes de iniciar uma venda.",
+          latestCashStatus?.blockReason || "Abra o seu caixa antes de iniciar uma venda.",
         );
         return;
       }
@@ -391,6 +554,72 @@ export default function SalesStartPage({
     setCheckoutOpen(true);
   }, [cart.length, formatMoneyBr, loadCashStatus, subtotal]);
 
+  const focusProductSearch = useCallback(() => {
+    openProductListRef.current = true;
+    setShowProductOptions(true);
+    setHighlightedProductIndex(0);
+    productInputRef.current?.focus();
+    productInputRef.current?.select();
+  }, []);
+
+  const focusQuantity = useCallback(() => {
+    qtyInputRef.current?.focus();
+    qtyInputRef.current?.select();
+  }, []);
+
+  const openLineAdjustment = useCallback((kind: "discount" | "surcharge") => {
+    if (checkoutOpen || cart.length === 0) {
+      Toast.info(cart.length === 0 ? "Adicione um item no cupom." : "Feche o pagamento para alterar o item.");
+      return;
+    }
+    setAdjustmentInput("");
+    setLineAdjustment(kind);
+  }, [cart.length, checkoutOpen]);
+
+  const applyLineAdjustment = useCallback(() => {
+    if (!lineAdjustment) return;
+    const last = cart[cart.length - 1];
+    if (!last) return;
+    const gross = lineGross(last);
+    const amount = parseCouponAdjustment(adjustmentInput, gross);
+    if (amount === null) {
+      Toast.error("Informe um valor. Ex.: 2,00 ou 10%.");
+      return;
+    }
+    if (lineAdjustment === "discount" && amount > gross) {
+      Toast.error("O desconto não pode passar do valor do item.");
+      return;
+    }
+    setCart((current) =>
+      current.map((item, index) =>
+        index === current.length - 1
+          ? {
+              ...item,
+              discount: lineAdjustment === "discount" ? amount : item.discount,
+              surcharge: lineAdjustment === "surcharge" ? amount : item.surcharge,
+            }
+          : item,
+      ),
+    );
+    Toast.success(
+      lineAdjustment === "discount"
+        ? `Desconto de R$ ${formatMoneyBr(amount)} no item ${last.name}.`
+        : `Acréscimo de R$ ${formatMoneyBr(amount)} no item ${last.name}.`,
+    );
+    setLineAdjustment(null);
+    setAdjustmentInput("");
+  }, [adjustmentInput, cart, formatMoneyBr, lineAdjustment]);
+
+  const cancelLastItem = useCallback(() => {
+    if (cart.length === 0) {
+      Toast.info("Nenhum item para cancelar.");
+      return;
+    }
+    const last = cart[cart.length - 1];
+    setCart((current) => current.slice(0, -1));
+    Toast.info(`Item cancelado: ${last.name}.`);
+  }, [cart]);
+
   const confirmPayment = async () => {
     if (paymentType === "dinheiro" && cashGivenValue < subtotal) {
       Toast.error("Valor recebido menor que total.");
@@ -401,7 +630,7 @@ export default function SalesStartPage({
       const latestCashStatus = await loadCashStatus();
       if (!latestCashStatus?.canSell) {
         Toast.error(
-          latestCashStatus?.blockReason || "Abra o caixa antes de confirmar a venda.",
+          latestCashStatus?.blockReason || "Abra o seu caixa antes de confirmar a venda.",
         );
         return;
       }
@@ -415,9 +644,12 @@ export default function SalesStartPage({
         items: cart.map((item) => ({
           productCode: item.code,
           productName: item.name,
-          quantity: item.quantity,
+          quantity: item.stockQuantity,
         })),
       });
+      if (result.savedOffline) {
+        cart.forEach((item) => reduceCachedProductStock(item.code, item.stockQuantity));
+      }
       const receipt: SaleReceipt = {
         saleNumber: result?.saleNumber || `PDV-${Date.now()}`,
         issuedAt: new Date().toISOString(),
@@ -444,17 +676,23 @@ export default function SalesStartPage({
         change: paymentType === "dinheiro" ? changeValue : 0,
         items: cart.map((item) => ({
           ...item,
-          total: item.quantity * item.unitPrice,
+          quantityLabel: lineMeasureLabel(item),
+          total: lineAmount(item),
         })),
       };
 
       setCheckoutOpen(false);
-      await loadProducts();
+      await loadProducts().catch(() => undefined);
+      notifyStockChanged();
       saveLastReceipt(receipt);
       if (printPreviewEnabled) {
         setReceiptPreview(receipt);
       }
-      Toast.success(`Pagamento confirmado. Venda ${receipt.saleNumber} registrada.`);
+      Toast.success(
+        result.savedOffline
+          ? `Venda ${receipt.saleNumber} guardada neste caixa. Vai para o servidor quando a internet voltar.`
+          : `Pagamento confirmado. Venda ${receipt.saleNumber} registrada.`,
+      );
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : "Erro ao registrar venda.");
       return;
@@ -477,13 +715,36 @@ export default function SalesStartPage({
       const target = event.target as HTMLElement | null;
       const isInput = target?.tagName === "INPUT";
 
+      if (lineAdjustment) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setLineAdjustment(null);
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          applyLineAdjustment();
+        }
+        return;
+      }
+      if (event.key === "F1") {
+        event.preventDefault();
+        if (!checkoutOpen) focusProductSearch();
+      }
       if (event.key === "F2") {
         event.preventDefault();
-        productInputRef.current?.focus();
+        openLineAdjustment("discount");
+      }
+      if (event.key === "F3") {
+        event.preventDefault();
+        openLineAdjustment("surcharge");
       }
       if (event.key === "F4") {
         event.preventDefault();
-        qtyInputRef.current?.focus();
+        if (!checkoutOpen) focusQuantity();
+      }
+      if (event.key === "F5") {
+        event.preventDefault();
+        if (!checkoutOpen) cancelLastItem();
       }
       if (event.key === "F8") {
         event.preventDefault();
@@ -502,21 +763,40 @@ export default function SalesStartPage({
           addItem();
         }
       }
-      if (event.key === "Escape" && checkoutOpen) {
-        event.preventDefault();
-        setCheckoutOpen(false);
+      if (event.key === "Escape") {
+        if (checkoutOpen) {
+          event.preventDefault();
+          setCheckoutOpen(false);
+          return;
+        }
+        if (showProductOptions || isInput) return;
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addItem, cancelSale, checkoutOpen, openPayment, quantity, selectedProductId, cart.length, showProductOptions]);
+  }, [
+    addItem,
+    applyLineAdjustment,
+    cancelLastItem,
+    cancelSale,
+    checkoutOpen,
+    focusProductSearch,
+    focusQuantity,
+    lineAdjustment,
+    openLineAdjustment,
+    openPayment,
+    quantity,
+    selectedProductId,
+    cart.length,
+    showProductOptions,
+  ]);
 
   const { dateLabel, timeLabel } = formatDateTime(now);
   const cashCanSell = cashStatus?.canSell === true;
   const cashLabel = cashStatus
     ? cashCanSell
-      ? `Caixa aberto por ${formatCashElapsed(cashStatus.currentSession?.elapsedMinutes)}`
+      ? `Seu caixa aberto por ${formatCashElapsed(cashStatus.currentSession?.elapsedMinutes)}`
       : cashStatus.blockReason || "Caixa fechado"
     : "Validando caixa...";
 
@@ -525,19 +805,40 @@ export default function SalesStartPage({
       <div className="mx-auto flex min-h-full w-full max-w-[1600px] flex-col overflow-visible rounded-2xl border border-border-primary bg-bg-light shadow-md md:h-full md:overflow-hidden">
         <header className="relative border-b border-border-secondary bg-accent px-4 py-3 text-text-light">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="font-display text-2xl font-bold italic leading-none md:text-4xl">Hórus PDV</h1>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="PDV-Pedimais" className="h-12 w-12 object-contain md:h-14 md:w-14" />
+              <div>
+              <h1 className="font-display text-2xl font-bold italic leading-none md:text-4xl">PDV-Pedimais</h1>
               <p className="text-sm italic leading-none md:text-lg">Frente de Caixa</p>
+              </div>
             </div>
-            <div className="text-right text-xs md:text-sm">
-              <p className="capitalize">{dateLabel}</p>
-              <p className="text-base font-semibold md:text-lg">{timeLabel}</p>
+            <div className="flex items-start gap-3">
+              <LowStockBell tone="accent" />
+              <div className="text-right text-xs md:text-sm">
+                <p className="capitalize">{dateLabel}</p>
+                <p className="text-base font-semibold md:text-lg">{timeLabel}</p>
+              </div>
             </div>
           </div>
         </header>
+        {products.some((item) => isLowStock(item.stock)) && (
+          <div className="px-3 pt-3">
+            <LowStockBanner
+              items={products
+                .filter((item) => isLowStock(item.stock))
+                .map((item) => ({
+                  id: item.id,
+                  name: item.name,
+                  code: item.code,
+                  unit: item.unit,
+                  quantity: item.stock,
+                }))}
+            />
+          </div>
+        )}
 
-        <main className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="shrink-0 border-b border-border-primary bg-bg-gray-theme p-3.5 text-text-primary lg:overflow-y-auto lg:border-b-0 lg:border-r">
+        <main className="flex min-h-0 flex-1 flex-col lg:grid lg:grid-cols-[260px_minmax(0,1fr)_210px]">
+          <aside data-tour="venda-produtos" className="shrink-0 border-b border-border-primary bg-bg-gray-theme p-3.5 text-text-primary lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <label className="mb-2 block">
               <span className="mb-1 block text-xs font-semibold uppercase">Produto:</span>
               <div className="relative">
@@ -555,6 +856,12 @@ export default function SalesStartPage({
                     setHighlightedProductIndex(0);
                   }}
                   onFocus={() => {
+                    if (openProductListRef.current) {
+                      openProductListRef.current = false;
+                      setShowProductOptions(true);
+                      setHighlightedProductIndex(0);
+                      return;
+                    }
                     // Evita reabrir o autocomplete automaticamente após adicionar item no mobile.
                     const hasSearch = productSearch.trim().length > 0;
                     setShowProductOptions(hasSearch);
@@ -611,7 +918,9 @@ export default function SalesStartPage({
                           }}
                         >
                           <p className="font-semibold">{item.name}</p>
-                          <p className="text-[11px] text-text-secondary">{item.code}</p>
+                          <p className="text-[11px] text-text-secondary">
+                            {item.code} · {item.unit === "kg" ? "quilo" : "unidade"}
+                          </p>
                         </li>
                       ))
                     ) : (
@@ -622,26 +931,47 @@ export default function SalesStartPage({
               </div>
             </label>
 
-            <label className="mb-2 block">
-              <span className="mb-1 block text-xs font-semibold uppercase">Quantidade (volume):</span>
+            <div className="mb-2">
+              <span className="mb-1 block text-xs font-semibold uppercase">
+                {quantityFieldLabel(selectedProduct?.unit || "un")}:
+              </span>
               <input
                 ref={qtyInputRef}
                 value={quantityInput}
                 inputMode="numeric"
-                pattern="[0-9]*"
                 onFocus={(event) => event.target.select()}
                 onChange={(event) =>
-                  setQuantityInput(sanitizeIntegerInput(event.target.value).slice(0, 4))
+                  setQuantityInput(sanitizeMeasureInput(event.target.value, selectedProduct?.unit || "un"))
                 }
                 onBlur={() => {
-                  if (!quantityInput || Number(quantityInput) < 1) setQuantityInput("1");
+                  if (selectedProduct?.unit !== "kg" && (!quantityInput || Number(quantityInput) < 1)) {
+                    setQuantityInput("1");
+                  }
                 }}
+                placeholder={selectedProduct?.unit === "kg" ? "500" : "1"}
                 className="input-field h-10 w-full text-lg font-semibold"
               />
-            </label>
+              {selectedProduct && isLowStock(selectedProduct.stock - reservedStock(cart, selectedProduct.id)) && (
+                <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                  Estoque baixo: {formatMeasure(Math.max(0, selectedProduct.stock - reservedStock(cart, selectedProduct.id)), selectedProduct.unit)} restantes.
+                </p>
+              )}
+              {selectedProduct?.unit === "l" && (
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  {quantity} unidade{quantity > 1 ? "s" : ""} = {Math.round(quantity * ML_PER_LIQUID_UNIT).toLocaleString("pt-BR")} ml descontados do estoque.
+                </p>
+              )}
+              {selectedProduct?.unit === "kg" && (
+                <p className="mt-1 text-[11px] text-text-secondary">
+                  {measureHint(selectedProduct.unit, quantity)}
+                </p>
+              )}
+            </div>
 
             <label className="mb-2 block">
-              <span className="mb-1 block text-xs font-semibold uppercase">Preço unitário:</span>
+              <span className="mb-1 block text-xs font-semibold uppercase">
+                {priceFieldLabel(selectedProduct?.unit || "un")}:
+              </span>
               <input
                 value={selectedProduct ? formatMoneyBr(selectedProduct.salePrice) : "0,00"}
                 className="input-field h-10 w-full text-lg font-semibold"
@@ -667,7 +997,15 @@ export default function SalesStartPage({
             </button>
 
             <div className="mt-2 border-t border-border-primary pt-2 text-sm">
-              <p className="font-semibold">Total volumes: {String(totalVolumes).padStart(4, "0")}</p>
+              <p className="font-semibold">
+                Total volumes:{" "}
+                {Number.isInteger(totalVolumes)
+                  ? String(totalVolumes).padStart(4, "0")
+                  : totalVolumes.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 3,
+                      maximumFractionDigits: 3,
+                    })}
+              </p>
             </div>
 
             <div className="mt-3 hidden rounded-xl border border-border-primary bg-bg-light p-3 sm:block">
@@ -692,7 +1030,7 @@ export default function SalesStartPage({
             <div className="grid grid-cols-1 gap-1 border-b border-border-primary bg-bg-gray-theme px-3 py-2 text-xs text-text-primary sm:grid-cols-[1fr_200px] sm:gap-0">
               <p>
                 <span className="font-semibold">Empresa:</span>{" "}
-                {company?.fantasyName || "Hórus PDV"}
+                {company?.fantasyName || "PDV-Pedimais"}
               </p>
               <p className="sm:text-right">
                 <span className="font-semibold">CNPJ:</span> {company?.cnpj || "-"}
@@ -727,7 +1065,7 @@ export default function SalesStartPage({
                   <>
                     <div className="space-y-2 p-2 md:hidden">
                       {cart.map((item, index) => {
-                        const total = item.quantity * item.unitPrice;
+                        const total = lineAmount(item);
                         return (
                           <article
                             key={item.id}
@@ -741,6 +1079,13 @@ export default function SalesStartPage({
                                 <p className="truncate text-sm font-semibold text-text-primary">
                                   {item.name}
                                 </p>
+                                {(item.discount > 0 || item.surcharge > 0) && (
+                                  <p className="text-[11px] text-text-secondary">
+                                    {item.discount > 0 ? `Desconto ${formatMoneyBr(item.discount)}` : ""}
+                                    {item.discount > 0 && item.surcharge > 0 ? " · " : ""}
+                                    {item.surcharge > 0 ? `Acréscimo ${formatMoneyBr(item.surcharge)}` : ""}
+                                  </p>
+                                )}
                               </div>
                               <button
                                 type="button"
@@ -754,7 +1099,7 @@ export default function SalesStartPage({
                             <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                               <div>
                                 <p className="text-text-secondary">Qtd</p>
-                                <p className="font-semibold text-text-primary">{item.quantity}</p>
+                                <p className="font-semibold text-text-primary">{lineMeasureLabel(item)}</p>
                               </div>
                               <div>
                                 <p className="text-text-secondary">Vl. Unit</p>
@@ -788,13 +1133,22 @@ export default function SalesStartPage({
                       </thead>
                       <tbody>
                         {cart.map((item, index) => {
-                          const total = item.quantity * item.unitPrice;
+                          const total = lineAmount(item);
                           return (
                             <tr key={item.id} className="border-b border-border-primary">
                               <td className="w-12 px-2 py-1 text-center">{index + 1}</td>
                               <td className="w-28 px-2 py-1">{item.code}</td>
-                              <td className="px-2 py-1">{item.name}</td>
-                              <td className="w-16 px-2 py-1 text-center">{item.quantity}</td>
+                              <td className="px-2 py-1">
+                                {item.name}
+                                {(item.discount > 0 || item.surcharge > 0) && (
+                                  <span className="mt-0.5 block text-[11px] text-text-secondary">
+                                    {item.discount > 0 ? `Desconto ${formatMoneyBr(item.discount)}` : ""}
+                                    {item.discount > 0 && item.surcharge > 0 ? " · " : ""}
+                                    {item.surcharge > 0 ? `Acréscimo ${formatMoneyBr(item.surcharge)}` : ""}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="w-16 px-2 py-1 text-center">{lineMeasureLabel(item)}</td>
                               <td className="w-32 px-2 py-1 text-right">{formatMoneyBr(item.unitPrice)}</td>
                               <td className="w-32 px-2 py-1 text-right">{formatMoneyBr(total)}</td>
                               <td className="w-12 px-1 py-1 text-center">
@@ -816,7 +1170,7 @@ export default function SalesStartPage({
               </div>
             </div>
 
-            <div className="md:sticky md:bottom-0 md:z-10 md:shadow-[0_-8px_18px_rgba(15,23,42,0.08)]">
+            <div data-tour="venda-pagamento" className="md:sticky md:bottom-0 md:z-10 md:shadow-[0_-8px_18px_rgba(15,23,42,0.08)]">
               <div className="border-t border-border-primary bg-bg-gray-theme px-3 py-1.5 text-sm text-text-primary">00 - Ajuda</div>
 
               <div className="grid grid-cols-[1fr_160px] border-t border-border-primary md:grid-cols-[1fr_220px]">
@@ -857,7 +1211,7 @@ export default function SalesStartPage({
               <footer className="space-y-0.5 border-t border-border-primary bg-bg-primary px-3 py-2 text-[11px] text-text-secondary sm:grid sm:grid-cols-3 sm:items-center sm:space-y-0 sm:text-xs">
                 <p>Usuário: {operatorName}</p>
                 <p className="sm:text-center">
-                  Estabelecimento: {company?.fantasyName || "Hórus PDV"}
+                  Estabelecimento: {company?.fantasyName || "PDV-Pedimais"}
                 </p>
                 <p className="sm:text-right">
                   Prévia impressão: {printPreviewEnabled ? "Sim" : "Não"} • Caixa:{" "}
@@ -866,8 +1220,62 @@ export default function SalesStartPage({
               </footer>
             </div>
           </section>
+
+          <aside data-tour="venda-funcoes" className="hidden border-border-primary bg-bg-gray-theme p-3 text-text-primary lg:block lg:overflow-y-auto lg:border-l">
+            <h2 className="mb-2 text-sm font-semibold text-accent">Funções</h2>
+            <ul className="space-y-1">
+              {[
+                { key: "F2", label: "Desconto no item", run: () => openLineAdjustment("discount") },
+                { key: "F3", label: "Acréscimo no item", run: () => openLineAdjustment("surcharge") },
+                { key: "F5", label: "Cancelar item", run: cancelLastItem },
+                { key: "F8", label: "Cancelar cupom", run: () => void cancelSale() },
+                { key: "F12", label: "Totalizar cupom", run: () => void openPayment() },
+              ].map((shortcut) => (
+                <li key={shortcut.key}>
+                  <button
+                    type="button"
+                    onClick={shortcut.run}
+                    className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs transition hover:bg-accent/10"
+                  >
+                    <span className="inline-flex min-w-10 justify-center rounded-md bg-accent px-1.5 py-0.5 text-[11px] font-semibold text-text-light">
+                      {shortcut.key}
+                    </span>
+                    <span className="font-medium">{shortcut.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </aside>
         </main>
       </div>
+
+      {lineAdjustment && (
+        <div className="fixed inset-0 z-layer-modal flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border-primary bg-bg-light p-4 text-text-primary">
+            <h2 className="text-lg font-semibold">
+              {lineAdjustment === "discount" ? "Desconto no item" : "Acréscimo no item"}
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Vale para {cart[cart.length - 1]?.name || "o último item"}. Use reais ou porcentagem.
+            </p>
+            <input
+              autoFocus
+              value={adjustmentInput}
+              onChange={(event) => setAdjustmentInput(event.target.value)}
+              placeholder="2,00 ou 10%"
+              className="input-field mt-3 w-full"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setLineAdjustment(null)} className="btn-cancel">
+                Cancelar
+              </button>
+              <button type="button" onClick={applyLineAdjustment} className="btn-success">
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {checkoutOpen && (
         <div className="fixed inset-0 z-layer-modal flex items-end bg-black/45 md:items-center md:justify-center">
@@ -894,26 +1302,27 @@ export default function SalesStartPage({
                 />
               </label>
 
-              <SearchableSelectField
-                label="Forma de pagamento"
-                value={paymentType}
-                options={PAYMENT_OPTIONS}
-                onChange={(nextValue) => setPaymentType(nextValue as PaymentType)}
-                getOptionValue={(option) => option.value}
-                getOptionLabel={(option) => option.label}
-                placeholder="Selecione a forma de pagamento"
-                emptyMessage="Forma de pagamento não encontrada."
-              />
+              <label className="block">
+                <span className="mb-1.5 block text-sm text-text-secondary">Forma de pagamento</span>
+                <select
+                  value={paymentType}
+                  onChange={(event) => setPaymentType(event.target.value as PaymentType)}
+                  className="input-field w-full"
+                >
+                  {PAYMENT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
               {paymentType === "dinheiro" && (
                 <label className="block">
                   <span className="mb-1.5 block text-sm text-text-secondary">Valor recebido</span>
                   <input
                     value={cashGiven}
-                    inputMode="numeric"
-                    pattern="[0-9,.]*"
-                    onBeforeInput={preventNonDigitBeforeInput}
-                    onPaste={pasteCashGiven}
+                    inputMode="decimal"
                     onChange={(event) => setCashGiven(maskMoneyBr(event.target.value))}
                     className="input-field w-full"
                     placeholder="0,00"

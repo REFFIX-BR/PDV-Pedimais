@@ -1,0 +1,41 @@
+{
+  "name": "horuspdv-desktop",
+  "productName": "PDV-Pedimais",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Janela de caixa do PDV-Pedimais.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "start:prod": "electron . --prod",
+    "dist": "npx electron-builder --win --config electron-builder.config.cjs"
+  },
+  "build": {
+    "appId": "br.com.pedimais.pdv",
+    "productName": "PDV-Pedimais",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "PDV-Pedimais",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "^39.2.6"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}

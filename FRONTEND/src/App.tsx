@@ -5,10 +5,13 @@
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Menu } from "lucide-react";
+import DesktopUpdateNotice from "@/components/Desktop/DesktopUpdateNotice";
 import AppSidebar, { type PageKey } from "@/components/AppSidebar/AppSidebar";
 import LoadingBar from "@/components/Loading/LoadingBar";
+import SplashScreen from "@/components/Loading/SplashScreen";
 import GuidedTour from "@/components/Tour/GuidedTour";
 import { APP_OPEN_TOUR_EVENT } from "@/domain/navigation/events";
+import { canAccessPage, canDeleteProducts } from "@/domain/access/pageAccess";
 import { Toast, useStatusDialog } from "@/hooks/Dialog";
 import ForgotPasswordPage from "@/pages/Auth/ForgotPasswordPage";
 import LoginPage from "@/pages/Auth/LoginPage";
@@ -16,10 +19,13 @@ import RegisterPage from "@/pages/Auth/RegisterPage";
 import ResetPasswordPage from "@/pages/Auth/ResetPasswordPage";
 import type { RegisterFormPayload } from "@/pages/Auth/types";
 import { authService } from "@/services/api/authService";
+import { TransportError } from "@/services/api/apiClient";
+import { startOutboxSync } from "@/services/offline/outbox";
 import { cashRegisterService } from "@/services/api/cashRegisterService";
 import {
   clearAuthSession,
   getStoredAuthUser,
+  getAuthRemember,
   setAuthSession,
   type AuthenticatedUser,
 } from "@/utils/authStorage";
@@ -42,15 +48,13 @@ const FiscalPage = lazy(() => import("@/pages/Admin/FiscalPage"));
 const PaymentsPage = lazy(() => import("@/pages/Admin/PaymentsPage"));
 const StockPage = lazy(() => import("@/pages/Admin/StockPage"));
 const CashRegisterPage = lazy(() => import("@/pages/Admin/CashRegisterPage"));
+const CashOverviewPage = lazy(() => import("@/pages/Admin/CashOverviewPage"));
 const PurchasesPage = lazy(() => import("@/pages/Admin/PurchasesPage"));
 const ReturnsPage = lazy(() => import("@/pages/Admin/ReturnsPage"));
 const CrmLoyaltyPage = lazy(() => import("@/pages/Admin/CrmLoyaltyPage"));
 const OmnichannelPage = lazy(() => import("@/pages/Admin/OmnichannelPage"));
 const SettingsPage = lazy(() => import("@/pages/Admin/SettingsPage"));
 const MyCompanyPage = lazy(() => import("@/pages/Admin/MyCompanyPage"));
-const LicenseDetailsPage = lazy(
-  () => import("@/pages/Admin/LicenseDetailsPage"),
-);
 const AboutPdvPage = lazy(() => import("@/pages/Admin/AboutPdvPage"));
 const EditProfilePage = lazy(() => import("@/pages/Admin/EditProfilePage"));
 const PROFILE_AVATAR_STORAGE_KEY = "horuspdv.profile.avatar";
@@ -65,6 +69,7 @@ type CurrentUser = {
   name: string;
   email: string;
   phone: string;
+  role: string;
   permission: string;
   avatarUrl: string | null;
 };
@@ -92,6 +97,7 @@ function toCurrentUser(user: AuthenticatedUser): CurrentUser {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    role: user.role,
     permission: formatRole(user.role),
     avatarUrl:
       typeof window !== "undefined"
@@ -120,13 +126,15 @@ export default function App() {
       "pagamentos",
       "estoque",
       "caixa",
+      "caixas-abertos",
+      "sangria",
+      "suprimento",
       "compras",
       "devolucoes",
       "crm-fidelidade",
       "omnichannel",
       "conta-de-usuario",
       "minha-empresa",
-      "detalhe-licenca",
       "sobre-pdv",
       "editar-perfil",
       "configuracoes",
@@ -141,7 +149,10 @@ export default function App() {
       return "vendas";
     }
     const savedPage = window.localStorage.getItem(ACTIVE_PAGE_STORAGE_KEY);
-    return savedPage && isPageKey(savedPage) ? savedPage : "home";
+    const storedRole = getStoredAuthUser()?.role || "";
+    return savedPage && isPageKey(savedPage) && canAccessPage(storedRole, savedPage)
+      ? savedPage
+      : "home";
   });
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     if (typeof window === "undefined") return "light";
@@ -155,7 +166,8 @@ export default function App() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(() => {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
-    return !(params.get("resetToken") || params.get("token"));
+    if (params.get("resetToken") || params.get("token")) return false;
+    return !getStoredAuthUser();
   });
 
   const [currentUser, setCurrentUser] = useState<CurrentUser>(() => {
@@ -166,6 +178,7 @@ export default function App() {
       name: storedUser?.name || "",
       email: storedUser?.email || "",
       phone: storedUser?.phone || "",
+      role: storedUser?.role || "",
       permission: formatRole(storedUser?.role || ""),
       avatarUrl:
         typeof window !== "undefined"
@@ -198,13 +211,15 @@ export default function App() {
     pagamentos: "Pagamentos Integrados",
     estoque: "Estoque e Inventário",
     caixa: "Abertura e Fechamento de Caixa",
+    "caixas-abertos": "Caixas abertos",
+    sangria: "Sangria",
+    suprimento: "Suprimento",
     compras: "Compras e Reposição",
     devolucoes: "Trocas e Devoluções",
     "crm-fidelidade": "CRM e Fidelidade",
     omnichannel: "Omnichannel e Integrações",
     "conta-de-usuario": "Contas de Usuários",
     "minha-empresa": "Minha Empresa",
-    "detalhe-licenca": "Detalhes da Licença",
     "sobre-pdv": "Sobre PDV",
     "editar-perfil": "Meu Perfil",
     configuracoes: "Configurações",
@@ -230,8 +245,6 @@ export default function App() {
         return PaymentsPage;
       case "estoque":
         return StockPage;
-      case "caixa":
-        return CashRegisterPage;
       case "compras":
         return PurchasesPage;
       case "devolucoes":
@@ -246,10 +259,10 @@ export default function App() {
         return UserAccountsPage;
       case "minha-empresa":
         return MyCompanyPage;
-      case "detalhe-licenca":
-        return LicenseDetailsPage;
       case "sobre-pdv":
         return AboutPdvPage;
+      case "caixas-abertos":
+        return CashOverviewPage;
       default:
         return EmptyPage;
     }
@@ -331,7 +344,7 @@ export default function App() {
       if (!cashStatus?.canSell) {
         const shouldOpenCashRegister = await statusDialog.confirm(
           cashStatus?.blockReason ||
-            "Para iniciar vendas, abra o caixa do dia primeiro.",
+            "Abra o seu caixa antes de vender.",
           {
             confirmIntent: "success",
             cancelLabel: "Agora não",
@@ -410,7 +423,7 @@ export default function App() {
         };
       }
 
-      setAuthSession(result.user, remember);
+      setAuthSession(result.user, remember, result.token);
       setCurrentUser(toCurrentUser(result.user));
       setIsAuthenticated(true);
       setActivePage(isStandalonePos ? "vendas" : "home");
@@ -509,18 +522,27 @@ export default function App() {
   useEffect(() => {
     authService
       .me()
-      .then((user) => {
-        if (!user) {
+      .then((session) => {
+        if (!session?.user) {
+          if (getStoredAuthUser()) return;
           clearAuthSession();
           setIsAuthenticated(false);
           return;
         }
 
-        setAuthSession(user);
-        setCurrentUser(toCurrentUser(user));
+        setAuthSession(session.user, getAuthRemember(), session.token);
+        setCurrentUser(toCurrentUser(session.user));
         setIsAuthenticated(true);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (error instanceof TransportError && getStoredAuthUser()) {
+          const user = getStoredAuthUser();
+          if (user) {
+            setCurrentUser(toCurrentUser(user));
+            setIsAuthenticated(true);
+          }
+          return;
+        }
         clearAuthSession();
         setIsAuthenticated(false);
       })
@@ -528,6 +550,26 @@ export default function App() {
         setIsCheckingAuth(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return startOutboxSync(
+      (count) => {
+        Toast.success(
+          count === 1
+            ? "1 operação guardada foi enviada ao servidor."
+            : `${count} operações guardadas foram enviadas ao servidor.`,
+        );
+      },
+      async () => {
+        const session = await authService.me();
+        if (!session?.user) return;
+        setAuthSession(session.user, getAuthRemember(), session.token);
+        setCurrentUser(toCurrentUser(session.user));
+        setIsAuthenticated(true);
+      },
+    );
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const syncAuthState = () => {
@@ -551,6 +593,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser.role || canAccessPage(currentUser.role, activePage)) return;
+    setActivePage("home");
+  }, [activePage, currentUser.role]);
+
+  useEffect(() => {
     if (isStandalonePos) return;
     window.localStorage.setItem(ACTIVE_PAGE_STORAGE_KEY, activePage);
   }, [activePage, isStandalonePos]);
@@ -570,19 +617,11 @@ export default function App() {
   }, [themeMode]);
 
   useEffect(() => {
-    if (activePage === "vendas" && isStandalonePos) {
-      document.title = "Hórus PDV - Frente de caixa grátis";
-      return;
-    }
-    document.title = "Hórus PDV - PDV grátis e frente de caixa";
+    document.title = "PDV-Pedimais";
   }, [activePage, isStandalonePos]);
 
   if (isCheckingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-primary text-text-secondary">
-        <LoadingBar />
-      </div>
-    );
+    return <SplashScreen message="Carregando o sistema" />;
   }
 
   if (!isAuthenticated) {
@@ -622,17 +661,20 @@ export default function App() {
     }
 
     return (
-      <LoginPage
-        onLogin={handleLogin}
-        onOpenForgotPassword={() => setPublicAuthPage("forgot-password")}
-        onOpenRegister={() => setPublicAuthPage("register")}
-      />
+      <>
+        <DesktopUpdateNotice />
+        <LoginPage
+          onLogin={handleLogin}
+          onOpenForgotPassword={() => setPublicAuthPage("forgot-password")}
+        />
+      </>
     );
   }
 
   if (activePage === "vendas") {
     return (
       <div className="min-h-screen bg-bg-primary text-text-primary font-sans">
+        <DesktopUpdateNotice />
         <Suspense
           fallback={
             <div className="flex min-h-screen items-center justify-center text-text-secondary">
@@ -659,6 +701,7 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-bg-primary text-text-primary font-sans">
+      <DesktopUpdateNotice />
       <header className="lg:hidden fixed top-0 left-0 right-0 z-layer-mobile-header h-14 bg-bg-light border-b border-border-primary px-3 shadow-sm">
         <div className="h-full flex items-center justify-between">
           <button
@@ -670,9 +713,11 @@ export default function App() {
             <Menu size={20} className="text-accent" />
           </button>
 
-          <h1 className="text-sm font-semibold text-text-primary truncate px-2">
-            {pageTitleByKey[activePage]}
+          <h1 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary truncate px-2">
+            <img src="/logo.png" alt="" className="h-7 w-7 shrink-0 object-contain" />
+            <span className="truncate">{pageTitleByKey[activePage]}</span>
           </h1>
+          <LowStockBell />
           <button
             type="button"
             onClick={() => setTourOpen(true)}
@@ -700,6 +745,7 @@ export default function App() {
         activePage={activePage}
         onChangePage={setActivePage}
         currentUserName={currentUser.name}
+        currentUserRole={currentUser.role}
         currentUserPermission={currentUser.permission}
         currentUserAvatarUrl={currentUser.avatarUrl}
         onOpenProfile={() => setActivePage("editar-perfil")}
@@ -740,9 +786,14 @@ export default function App() {
             />
           ) : activePage === "home" ? (
             <HomePage
+              role={currentUser.role}
               onNavigate={setActivePage}
               onOpenSalesInNewTab={handleOpenSalesInNewTab}
             />
+          ) : activePage === "caixa" || activePage === "sangria" || activePage === "suprimento" ? (
+            <CashRegisterPage mode={activePage} />
+          ) : activePage === "cadastro-produto" ? (
+            <ProductRegisterPage canDelete={canDeleteProducts(currentUser.role)} />
           ) : (
             <CurrentPage />
           )}

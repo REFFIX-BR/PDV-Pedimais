@@ -6,9 +6,9 @@
 
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useMemo, useState } from "react";
-import { CircleCheck, CircleX, Info, LoaderCircle, X } from "lucide-react";
+import { CircleCheck, CircleX, Info, LoaderCircle, TriangleAlert, X } from "lucide-react";
 
-export type ToastType = "success" | "error" | "info" | "loading";
+export type ToastType = "success" | "error" | "info" | "warning" | "loading";
 
 export interface ToastProps {
   id: number;
@@ -23,6 +23,7 @@ const backgroundByType = {
   success: "toast-success",
   error: "toast-error",
   info: "toast-info",
+  warning: "toast-warning",
   loading: "toast-loading",
 } satisfies Record<ToastType, string>;
 
@@ -69,6 +70,7 @@ export const Toast = {
     addToast("success", message, duration),
   error: (message: string, duration?: number) => addToast("error", message, duration),
   info: (message: string, duration?: number) => addToast("info", message, duration),
+  warning: (message: string, duration?: number) => addToast("warning", message, duration),
   loading: (message: string) => addToast("loading", message, 0),
   remove: removeToast,
 };
@@ -92,6 +94,7 @@ export function ToastContainer() {
           {toast.type === "success" && <CircleCheck className="h-6 w-6" />}
           {toast.type === "error" && <CircleX className="h-6 w-6" />}
           {toast.type === "info" && <Info className="h-6 w-6" />}
+          {toast.type === "warning" && <TriangleAlert className="h-6 w-6" />}
           {toast.type === "loading" && <LoaderCircle className="h-6 w-6 animate-spin" />}
 
           <span className="flex-1">{toast.message}</span>

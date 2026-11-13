@@ -42,6 +42,7 @@ builder.Services.AddScoped<ClienteAB>();
 builder.Services.AddScoped<FornecedorAB>();
 builder.Services.AddScoped<EmpresaAB>();
 builder.Services.AddScoped<HistoricoVendasAB>();
+builder.Services.AddScoped<DevolucaoAB>();
 builder.Services.AddScoped<ModuloMercadoAB>();
 builder.Services.AddScoped<CaixaAB>();
 builder.Services.AddScoped<HomeAB>();

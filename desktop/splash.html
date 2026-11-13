@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>PDV-Pedimais</title>
+    <style>
+      html, body { margin: 0; height: 100%; }
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background:
+          radial-gradient(circle at 15% 20%, rgba(46, 191, 244, 0.18), transparent 42%),
+          radial-gradient(circle at 88% 82%, rgba(255, 140, 40, 0.14), transparent 40%),
+          #f8fafc;
+        color: #475569;
+        font-family: "Segoe UI", sans-serif;
+      }
+      .boot-brand { display: flex; align-items: center; gap: 16px; }
+      .boot-logo { width: 88px; height: 88px; object-fit: contain; }
+      .boot-word { height: 64px; width: auto; max-width: min(420px, 58vw); object-fit: contain; object-position: left center; }
+      .boot-status { margin: 0; max-width: 420px; padding: 0 24px; text-align: center; font-size: 15px; line-height: 1.45; }
+      .boot-track { width: 180px; height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+      .boot-bar {
+        display: block;
+        height: 100%;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #075985, #2ebff4);
+        animation: boot-slide 1.15s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="boot-splash" role="status" aria-live="polite">
+      <div class="boot-brand">
+        <img class="boot-logo" src="../FRONTEND/public/logo.png" alt="" />
+        <img class="boot-word" src="../FRONTEND/public/wordmark.png" alt="PDV-Pedimais, painel operacional" />
+      </div>
+      <p class="boot-status" id="boot-status">Abrindo o PDV-Pedimais</p>
+      <div class="boot-track" aria-hidden="true"><span class="boot-bar"></span></div>
+    </div>
+  </body>
+</html>

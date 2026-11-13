@@ -198,7 +198,12 @@ export default function SalesHistoryPage() {
             <tbody>
               {paginatedSales.map((sale) => (
                 <tr key={`${sale.saleNumber}-${sale.productCode}`} className="border-t border-border-primary">
-                  <td className="px-3 py-3 font-semibold text-text-primary">{sale.saleNumber}</td>
+                  <td className="px-3 py-3 font-semibold text-text-primary">
+                    {sale.saleNumber}
+                    {sale.status && sale.status !== "Concluida" ? (
+                      <span className="mt-1 block text-xs font-medium text-primary">{sale.status}</span>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-3">
                     <span className="block break-words leading-snug" title={sale.customerName}>
                       {sale.customerName}

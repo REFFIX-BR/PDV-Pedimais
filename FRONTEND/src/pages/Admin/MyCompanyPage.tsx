@@ -3,7 +3,7 @@
  * Objetivo: centraliza configurações cadastrais e de contato da empresa.
  * Entradas esperadas: não recebe props; renderiza formulário de dados institucionais.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/Admin/PageHeader";
 import { SearchableSelectField, YesNoSegmentedControl } from "@/components/Form";
 import LoadingButton from "@/components/Loading/LoadingButton";
@@ -11,6 +11,7 @@ import { Toast } from "@/hooks/Dialog";
 import useInputMasks from "@/hooks/InputMasks/useInputMasks";
 import PageLayout from "@/layout/PageLayout";
 import { companyService } from "@/services/api/companyService";
+import { clearFormDraft, readFormDraft, writeFormDraft } from "@/utils/formDraft";
 import { lookupAddressByCep, sanitizeCep } from "@/utils/cepLookup";
 import { isValidEmail } from "@/utils/validators";
 
@@ -46,35 +47,123 @@ const UF_OPTIONS = [
 
 const UF_SELECT_OPTIONS = UF_OPTIONS.map((option) => ({ value: option, label: option }));
 
+type CompanyDraft = {
+  fantasyName: string;
+  corporateName: string;
+  cnpj: string;
+  stateRegistration: string;
+  website: string;
+  email: string;
+  telSac: string;
+  telefone: string;
+  celular: string;
+  cep: string;
+  address: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  uf: string;
+  complement: string;
+  emailSmtpEnabled: boolean;
+  emailSmtpHost: string;
+  emailSmtpPort: string;
+  emailSmtpEnableSsl: boolean;
+  emailSmtpUser: string;
+  emailSmtpFromEmail: string;
+  emailSmtpFromName: string;
+  emailSmtpReplyTo: string;
+};
+
+function companyDraftFromApi(data: {
+  fantasyName: string;
+  corporateName: string;
+  cnpj: string;
+  stateRegistration: string;
+  website: string;
+  email: string;
+  sacPhone: string;
+  phone: string;
+  mobile: string;
+  cep: string;
+  address: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  uf: string;
+  complement: string;
+  emailSmtpEnabled?: boolean;
+  emailSmtpHost?: string;
+  emailSmtpPort?: number;
+  emailSmtpEnableSsl?: boolean;
+  emailSmtpUser?: string;
+  emailSmtpFromEmail?: string;
+  emailSmtpFromName?: string;
+  emailSmtpReplyTo?: string;
+}): CompanyDraft {
+  return {
+    fantasyName: data.fantasyName,
+    corporateName: data.corporateName,
+    cnpj: data.cnpj,
+    stateRegistration: data.stateRegistration,
+    website: data.website,
+    email: data.email,
+    telSac: data.sacPhone,
+    telefone: data.phone,
+    celular: data.mobile,
+    cep: data.cep,
+    address: data.address,
+    number: data.number,
+    neighborhood: data.neighborhood,
+    city: data.city,
+    uf: data.uf || "SP",
+    complement: data.complement,
+    emailSmtpEnabled: Boolean(data.emailSmtpEnabled),
+    emailSmtpHost: data.emailSmtpHost || "smtp-mail.outlook.com",
+    emailSmtpPort: String(data.emailSmtpPort || 587),
+    emailSmtpEnableSsl: data.emailSmtpEnableSsl ?? true,
+    emailSmtpUser: data.emailSmtpUser || "",
+    emailSmtpFromEmail: data.emailSmtpFromEmail || data.email || "",
+    emailSmtpFromName: data.emailSmtpFromName || data.fantasyName || "PDV-Pedimais",
+    emailSmtpReplyTo: data.emailSmtpReplyTo || "",
+  };
+}
+
 export default function MyCompanyPage() {
   const { maskCep, maskCnpj, maskPhoneBr, onlyDigits } = useInputMasks();
+  const [savedCompany] = useState(() => readFormDraft<CompanyDraft>("empresa"));
+  const baselineRef = useRef<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
 
-  const [fantasyName, setFantasyName] = useState("");
-  const [corporateName, setCorporateName] = useState("");
-  const [cnpj, setCnpj] = useState("");
-  const [stateRegistration, setStateRegistration] = useState("");
-  const [website, setWebsite] = useState("");
-  const [email, setEmail] = useState("");
-  const [telSac, setTelSac] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [celular, setCelular] = useState("");
-  const [cep, setCep] = useState("");
-  const [address, setAddress] = useState("");
-  const [number, setNumber] = useState("");
-  const [neighborhood, setNeighborhood] = useState("");
-  const [city, setCity] = useState("");
-  const [uf, setUf] = useState("SP");
-  const [complement, setComplement] = useState("");
-  const [emailSmtpEnabled, setEmailSmtpEnabled] = useState(false);
-  const [emailSmtpHost, setEmailSmtpHost] = useState("smtp-mail.outlook.com");
-  const [emailSmtpPort, setEmailSmtpPort] = useState("587");
-  const [emailSmtpEnableSsl, setEmailSmtpEnableSsl] = useState(true);
-  const [emailSmtpUser, setEmailSmtpUser] = useState("");
+  const [fantasyName, setFantasyName] = useState(() => savedCompany?.fantasyName ?? "");
+  const [corporateName, setCorporateName] = useState(() => savedCompany?.corporateName ?? "");
+  const [cnpj, setCnpj] = useState(() => savedCompany?.cnpj ?? "");
+  const [stateRegistration, setStateRegistration] = useState(() => savedCompany?.stateRegistration ?? "");
+  const [website, setWebsite] = useState(() => savedCompany?.website ?? "");
+  const [email, setEmail] = useState(() => savedCompany?.email ?? "");
+  const [telSac, setTelSac] = useState(() => savedCompany?.telSac ?? "");
+  const [telefone, setTelefone] = useState(() => savedCompany?.telefone ?? "");
+  const [celular, setCelular] = useState(() => savedCompany?.celular ?? "");
+  const [cep, setCep] = useState(() => savedCompany?.cep ?? "");
+  const [address, setAddress] = useState(() => savedCompany?.address ?? "");
+  const [number, setNumber] = useState(() => savedCompany?.number ?? "");
+  const [neighborhood, setNeighborhood] = useState(() => savedCompany?.neighborhood ?? "");
+  const [city, setCity] = useState(() => savedCompany?.city ?? "");
+  const [uf, setUf] = useState(() => savedCompany?.uf || "SP");
+  const [complement, setComplement] = useState(() => savedCompany?.complement ?? "");
+  const [emailSmtpEnabled, setEmailSmtpEnabled] = useState(() => savedCompany?.emailSmtpEnabled ?? false);
+  const [emailSmtpHost, setEmailSmtpHost] = useState(
+    () => savedCompany?.emailSmtpHost || "smtp-mail.outlook.com",
+  );
+  const [emailSmtpPort, setEmailSmtpPort] = useState(() => savedCompany?.emailSmtpPort || "587");
+  const [emailSmtpEnableSsl, setEmailSmtpEnableSsl] = useState(() => savedCompany?.emailSmtpEnableSsl ?? true);
+  const [emailSmtpUser, setEmailSmtpUser] = useState(() => savedCompany?.emailSmtpUser ?? "");
   const [emailSmtpPassword, setEmailSmtpPassword] = useState("");
   const [emailSmtpHasPassword, setEmailSmtpHasPassword] = useState(false);
-  const [emailSmtpFromEmail, setEmailSmtpFromEmail] = useState("");
-  const [emailSmtpFromName, setEmailSmtpFromName] = useState("Hórus PDV");
-  const [emailSmtpReplyTo, setEmailSmtpReplyTo] = useState("");
+  const [emailSmtpFromEmail, setEmailSmtpFromEmail] = useState(() => savedCompany?.emailSmtpFromEmail ?? "");
+  const [emailSmtpFromName, setEmailSmtpFromName] = useState(
+    () => savedCompany?.emailSmtpFromName || "PDV-Pedimais",
+  );
+  const [emailSmtpReplyTo, setEmailSmtpReplyTo] = useState(() => savedCompany?.emailSmtpReplyTo ?? "");
   const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [cepLookupError, setCepLookupError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -84,37 +173,105 @@ export default function MyCompanyPage() {
       .get()
       .then((data) => {
         if (!data) return;
-        setFantasyName(data.fantasyName);
-        setCorporateName(data.corporateName);
-        setCnpj(data.cnpj);
-        setStateRegistration(data.stateRegistration);
-        setWebsite(data.website);
-        setEmail(data.email);
-        setTelSac(data.sacPhone);
-        setTelefone(data.phone);
-        setCelular(data.mobile);
-        setCep(data.cep);
-        setAddress(data.address);
-        setNumber(data.number);
-        setNeighborhood(data.neighborhood);
-        setCity(data.city);
-        setUf(data.uf || "SP");
-        setComplement(data.complement);
-        setEmailSmtpEnabled(Boolean(data.emailSmtpEnabled));
-        setEmailSmtpHost(data.emailSmtpHost || "smtp-mail.outlook.com");
-        setEmailSmtpPort(String(data.emailSmtpPort || 587));
-        setEmailSmtpEnableSsl(data.emailSmtpEnableSsl ?? true);
-        setEmailSmtpUser(data.emailSmtpUser || "");
+        const server = companyDraftFromApi(data);
+        baselineRef.current = JSON.stringify(server);
+        if (!savedCompany) {
+          setFantasyName(server.fantasyName);
+          setCorporateName(server.corporateName);
+          setCnpj(server.cnpj);
+          setStateRegistration(server.stateRegistration);
+          setWebsite(server.website);
+          setEmail(server.email);
+          setTelSac(server.telSac);
+          setTelefone(server.telefone);
+          setCelular(server.celular);
+          setCep(server.cep);
+          setAddress(server.address);
+          setNumber(server.number);
+          setNeighborhood(server.neighborhood);
+          setCity(server.city);
+          setUf(server.uf);
+          setComplement(server.complement);
+          setEmailSmtpEnabled(server.emailSmtpEnabled);
+          setEmailSmtpHost(server.emailSmtpHost);
+          setEmailSmtpPort(server.emailSmtpPort);
+          setEmailSmtpEnableSsl(server.emailSmtpEnableSsl);
+          setEmailSmtpUser(server.emailSmtpUser);
+          setEmailSmtpFromEmail(server.emailSmtpFromEmail);
+          setEmailSmtpFromName(server.emailSmtpFromName);
+          setEmailSmtpReplyTo(server.emailSmtpReplyTo);
+        }
         setEmailSmtpPassword("");
         setEmailSmtpHasPassword(Boolean(data.emailSmtpHasPassword));
-        setEmailSmtpFromEmail(data.emailSmtpFromEmail || data.email || "");
-        setEmailSmtpFromName(data.emailSmtpFromName || data.fantasyName || "Hórus PDV");
-        setEmailSmtpReplyTo(data.emailSmtpReplyTo || "");
+        setDraftReady(true);
       })
       .catch(() => {
         Toast.error("Não foi possível carregar dados da empresa.");
+        setDraftReady(true);
       });
-  }, []);
+  }, [savedCompany]);
+
+  useEffect(() => {
+    if (!draftReady || baselineRef.current === null) return;
+    const current: CompanyDraft = {
+      fantasyName,
+      corporateName,
+      cnpj,
+      stateRegistration,
+      website,
+      email,
+      telSac,
+      telefone,
+      celular,
+      cep,
+      address,
+      number,
+      neighborhood,
+      city,
+      uf,
+      complement,
+      emailSmtpEnabled,
+      emailSmtpHost,
+      emailSmtpPort,
+      emailSmtpEnableSsl,
+      emailSmtpUser,
+      emailSmtpFromEmail,
+      emailSmtpFromName,
+      emailSmtpReplyTo,
+    };
+    const serialized = JSON.stringify(current);
+    if (serialized === baselineRef.current) {
+      clearFormDraft("empresa");
+      return;
+    }
+    writeFormDraft("empresa", current);
+  }, [
+    draftReady,
+    fantasyName,
+    corporateName,
+    cnpj,
+    stateRegistration,
+    website,
+    email,
+    telSac,
+    telefone,
+    celular,
+    cep,
+    address,
+    number,
+    neighborhood,
+    city,
+    uf,
+    complement,
+    emailSmtpEnabled,
+    emailSmtpHost,
+    emailSmtpPort,
+    emailSmtpEnableSsl,
+    emailSmtpUser,
+    emailSmtpFromEmail,
+    emailSmtpFromName,
+    emailSmtpReplyTo,
+  ]);
 
   const handleCepLookup = async () => {
     const rawCep = sanitizeCep(cep);
@@ -226,6 +383,9 @@ export default function MyCompanyPage() {
       });
 
       if (data) {
+        const server = companyDraftFromApi(data);
+        baselineRef.current = JSON.stringify(server);
+        clearFormDraft("empresa");
         setFantasyName(data.fantasyName);
         setCorporateName(data.corporateName);
         setCnpj(data.cnpj);
@@ -250,7 +410,7 @@ export default function MyCompanyPage() {
         setEmailSmtpPassword("");
         setEmailSmtpHasPassword(Boolean(data.emailSmtpHasPassword));
         setEmailSmtpFromEmail(data.emailSmtpFromEmail || data.email || "");
-        setEmailSmtpFromName(data.emailSmtpFromName || data.fantasyName || "Hórus PDV");
+        setEmailSmtpFromName(data.emailSmtpFromName || data.fantasyName || "PDV-Pedimais");
         setEmailSmtpReplyTo(data.emailSmtpReplyTo || "");
       }
       Toast.success("Dados da empresa salvos com sucesso.");
@@ -483,7 +643,7 @@ export default function MyCompanyPage() {
         </form>
       </section>
 
-      <section className="card rounded-2xl p-4 md:p-5">
+      <section data-tour="empresa-email" className="card rounded-2xl p-4 md:p-5">
         <div className="mb-4 flex flex-col gap-3 border-b border-border/70 pb-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-base font-semibold text-text-primary">

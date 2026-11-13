@@ -152,7 +152,7 @@ public class UsuarioController(
             {
                 await emailService.SendPasswordResetEmailAsync(
                     result.User.Email,
-                    "Hórus PDV",
+                    "PDV-Pedimais",
                     resetUrl,
                     result.ExpiresAt.Value,
                     HttpContext.RequestAborted);

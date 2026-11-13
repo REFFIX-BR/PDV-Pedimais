@@ -23,6 +23,7 @@ import {
   isValidCpf,
   isValidEmail,
 } from "@/utils/validators";
+import { hasFilledValue, readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { onlyDigits } from "@/utils/inputMasks";
 
 type Customer = {
@@ -214,13 +215,22 @@ export default function CustomerRegisterPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(() => new Set());
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savedCustomerDraft] = useState(() =>
+    readFormDraft<{ open: boolean; editingId: string | null; form: CustomerFormData }>("cliente"),
+  );
+  const [drawerOpen, setDrawerOpen] = useState(
+    () => Boolean(savedCustomerDraft?.open) || hasFilledValue(savedCustomerDraft?.form),
+  );
+  const [editingId, setEditingId] = useState<string | null>(() => savedCustomerDraft?.editingId ?? null);
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingCustomerIds, setDeletingCustomerIds] = useState<Set<string>>(() => new Set());
   const [loadingCep, setLoadingCep] = useState(false);
-  const [form, setForm] = useState<CustomerFormData>(EMPTY_FORM);
+  const [form, setForm] = useState<CustomerFormData>(() => ({
+    ...EMPTY_FORM,
+    ...(savedCustomerDraft?.form ?? {}),
+  }));
+  usePersistFormDraft("cliente", { open: drawerOpen, editingId, form });
 
   useEffect(() => {
     customerService
@@ -278,6 +288,10 @@ export default function CustomerRegisterPage() {
   };
 
   const openCreateDrawer = () => {
+    if (editingId === null && hasFilledValue(form)) {
+      setDrawerOpen(true);
+      return;
+    }
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDrawerOpen(true);

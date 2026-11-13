@@ -15,8 +15,8 @@ public class HistoricoVendasAB(Connection connection)
     {
         const string sql = """
             SELECT v.SaleNumber, v.CustomerName, v.CustomerCpf, v.PaymentType,
-                   v.TotalAmount, v.OperatorName, v.SaleDate,
-                   i.ProductCode, i.ProductName, i.Quantity, i.UnitPrice, i.ItemTotal
+                   v.TotalAmount, v.OperatorName, v.SaleDate, v.Status, v.RefundedAmount,
+                   i.ProductCode, i.ProductName, i.Quantity, i.ReturnedQuantity, i.UnitPrice, i.ItemTotal
             FROM VendaItens i
             INNER JOIN Vendas v ON v.Id = i.VendaId
             WHERE v.CompanyId = @CompanyId
@@ -164,7 +164,7 @@ public class HistoricoVendasAB(Connection connection)
 
             await using var select = new SqlCommand(
                 """
-                SELECT Id, ProductName, ProductQnt, ProductUnitPrice, ProductSalePrice
+                SELECT Id, ProductName, ProductUnit, ProductQnt, ProductUnitPrice, ProductSalePrice
                 FROM Produtos WITH (UPDLOCK, ROWLOCK)
                 WHERE CompanyId = @CompanyId AND ProductCode = @ProductCode;
                 """,
@@ -180,7 +180,15 @@ public class HistoricoVendasAB(Connection connection)
 
             var productId = ReadString(reader, "Id");
             item.ProductName = ReadString(reader, "ProductName");
-            var currentStock = ParseInt(ReadString(reader, "ProductQnt"));
+            var unit = ReadString(reader, "ProductUnit").Trim().ToLowerInvariant();
+            if (unit != "kg" && unit != "l") unit = "un";
+            item.Quantity = decimal.Round(item.Quantity, 3, MidpointRounding.AwayFromZero);
+            if (unit == "un" && item.Quantity != decimal.Truncate(item.Quantity))
+            {
+                throw new InvalidOperationException($"{item.ProductName} é vendido por unidade. Informe um número inteiro.");
+            }
+
+            var currentStock = ParseDecimal(ReadString(reader, "ProductQnt"));
             var unitPrice = ReadString(reader, "ProductUnitPrice");
             var salePrice = ReadString(reader, "ProductSalePrice");
             item.UnitPrice = string.IsNullOrWhiteSpace(salePrice) ? unitPrice : salePrice;
@@ -189,7 +197,7 @@ public class HistoricoVendasAB(Connection connection)
             if (currentStock < item.Quantity)
             {
                 throw new InvalidOperationException(
-                    $"Estoque insuficiente para {item.ProductName}. Disponível: {currentStock}.");
+                    $"Estoque insuficiente para {item.ProductName}. Disponível: {FormatQuantity(currentStock)}.");
             }
 
             var nextStock = currentStock - item.Quantity;
@@ -202,7 +210,7 @@ public class HistoricoVendasAB(Connection connection)
                 """,
                 db,
                 transaction);
-            update.Parameters.AddWithValue("@ProductQnt", nextStock.ToString());
+            update.Parameters.AddWithValue("@ProductQnt", FormatQuantity(nextStock));
             update.Parameters.AddWithValue("@TotalPriceOnProduct", CalculateTotal(unitPrice, nextStock));
             update.Parameters.AddWithValue("@Id", productId);
             await update.ExecuteNonQueryAsync();
@@ -221,7 +229,10 @@ public class HistoricoVendasAB(Connection connection)
         OperatorName = ReadString(reader, "OperatorName"),
         ProductCode = ReadString(reader, "ProductCode"),
         ProductName = ReadString(reader, "ProductName"),
-        Quantity = reader.GetInt32(reader.GetOrdinal("Quantity")),
+        Quantity = reader.GetDecimal(reader.GetOrdinal("Quantity")),
+        ReturnedQuantity = reader.GetDecimal(reader.GetOrdinal("ReturnedQuantity")),
+        Status = ReadString(reader, "Status"),
+        RefundedAmount = ReadString(reader, "RefundedAmount"),
         UnitPrice = ReadString(reader, "UnitPrice"),
         ItemTotal = ReadString(reader, "ItemTotal"),
         SaleDate = reader.GetDateTimeOffset(reader.GetOrdinal("SaleDate")).LocalDateTime.ToString("dd/MM/yyyy HH:mm:ss")
@@ -240,6 +251,12 @@ public class HistoricoVendasAB(Connection connection)
                 ALTER TABLE VendaItens ADD UnitPrice NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_UnitPrice DEFAULT N'0,00';
             IF COL_LENGTH('VendaItens', 'ItemTotal') IS NULL
                 ALTER TABLE VendaItens ADD ItemTotal NVARCHAR(30) NOT NULL CONSTRAINT DF_VendaItens_ItemTotal DEFAULT N'0,00';
+            IF COL_LENGTH('Vendas', 'Status') IS NULL
+                ALTER TABLE Vendas ADD Status NVARCHAR(20) NOT NULL CONSTRAINT DF_Vendas_Status DEFAULT N'Concluida';
+            IF COL_LENGTH('Vendas', 'RefundedAmount') IS NULL
+                ALTER TABLE Vendas ADD RefundedAmount NVARCHAR(30) NOT NULL CONSTRAINT DF_Vendas_RefundedAmount DEFAULT N'0,00';
+            IF COL_LENGTH('VendaItens', 'ReturnedQuantity') IS NULL
+                ALTER TABLE VendaItens ADD ReturnedQuantity DECIMAL(18, 3) NOT NULL CONSTRAINT DF_VendaItens_ReturnedQuantity DEFAULT 0;
             """;
 
         const string backfillSql = """
@@ -277,10 +294,22 @@ public class HistoricoVendasAB(Connection connection)
         await backfillCommand.ExecuteNonQueryAsync();
     }
 
-    private static int ParseInt(string value)
-        => int.TryParse(value, out var parsed) ? parsed : 0;
+    private static decimal ParseDecimal(string value)
+    {
+        var normalized = value.Trim().Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(
+            normalized,
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out var parsed)
+            ? parsed
+            : 0;
+    }
 
-    private static string CalculateTotal(string unitPrice, int quantity)
+    private static string FormatQuantity(decimal quantity)
+        => quantity.ToString("0.###", new System.Globalization.CultureInfo("pt-BR"));
+
+    private static string CalculateTotal(string unitPrice, decimal quantity)
     {
         var normalized = unitPrice.Replace(".", "").Replace(",", ".");
         if (!decimal.TryParse(
@@ -306,6 +335,6 @@ public class HistoricoVendasAB(Connection connection)
         public string ProductCode { get; set; } = string.Empty;
         public string ProductName { get; set; } = string.Empty;
         public string UnitPrice { get; set; } = string.Empty;
-        public int Quantity { get; set; }
+        public decimal Quantity { get; set; }
     }
 }

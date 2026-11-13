@@ -12,6 +12,7 @@ import { SearchableSelectField } from "@/components/Form";
 import LoadingButton from "@/components/Loading/LoadingButton";
 import TablePagination from "@/components/Pagination/TablePagination";
 import AddressContactFields from "@/components/Register/AddressContactFields";
+import { isLowStock, notifyStockChanged, parseStockQuantity, stockStatusLabel } from "@/domain/stock/lowStock";
 import { Toast, useStatusDialog } from "@/hooks/Dialog";
 import useInputMasks from "@/hooks/InputMasks/useInputMasks";
 import PageLayout from "@/layout/PageLayout";
@@ -19,6 +20,7 @@ import { productService } from "@/services/api/productService";
 import { supplierService, type SupplierPayload } from "@/services/api/supplierService";
 import { lookupAddressByCep } from "@/utils/cepLookup";
 import { onlyDigits } from "@/utils/inputMasks";
+import { hasFilledValue, readFormDraft, usePersistFormDraft } from "@/utils/formDraft";
 import { isValidCnpj, isValidEmail } from "@/utils/validators";
 
 type Product = {
@@ -29,6 +31,7 @@ type Product = {
   productCode: string;
   productSupplier: string;
   productDescription: string;
+  productUnit: string;
   productQnt: string;
   productUnitPrice: string;
   productSalePrice: string;
@@ -46,6 +49,7 @@ const EMPTY_FORM: ProductFormData = {
   productCode: "",
   productSupplier: "",
   productDescription: "",
+  productUnit: "un",
   productQnt: "",
   productUnitPrice: "",
   productSalePrice: "",
@@ -68,6 +72,22 @@ const EMPTY_SUPPLIER_DRAFT: QuickSupplierDraft = {
   cellphone: "",
   email: "",
 };
+
+function parseQuantity(value: string) {
+  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sanitizeStockInput(value: string, unit: string) {
+  if (unit === "kg" || unit === "l") {
+    const cleaned = value.replace(/[^\d,]/g, "");
+    const [whole, fraction] = cleaned.split(",");
+    if (fraction === undefined) return whole.slice(0, 8);
+    return `${whole.slice(0, 8)},${fraction.slice(0, 3)}`;
+  }
+  return value.replace(/\D/g, "").slice(0, 8);
+}
 
 function preventNonDigitBeforeInput(event: FormEvent<HTMLInputElement>) {
   const data = (event.nativeEvent as InputEvent).data ?? "";
@@ -106,8 +126,15 @@ function ProductFormDrawer({
   } = useInputMasks();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
-  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-  const [supplierDraft, setSupplierDraft] = useState<QuickSupplierDraft>(EMPTY_SUPPLIER_DRAFT);
+  const [savedSupplierDraft] = useState(() =>
+    readFormDraft<{ open: boolean; form: QuickSupplierDraft }>("produto-fornecedor"),
+  );
+  const [supplierModalOpen, setSupplierModalOpen] = useState(() => Boolean(savedSupplierDraft?.open));
+  const [supplierDraft, setSupplierDraft] = useState<QuickSupplierDraft>(() => ({
+    ...EMPTY_SUPPLIER_DRAFT,
+    ...(savedSupplierDraft?.form ?? {}),
+  }));
+  usePersistFormDraft("produto-fornecedor", { open: supplierModalOpen, form: supplierDraft });
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [loadingSupplierCep, setLoadingSupplierCep] = useState(false);
   if (!open) return null;
@@ -117,7 +144,11 @@ function ProductFormDrawer({
     fieldValue: ProductFormData[K],
   ) => {
     const next = { ...value, [key]: fieldValue };
-    const quantity = Number(next.productQnt || 0);
+    if (key === "productUnit" && fieldValue === "un") {
+      const current = parseQuantity(String(next.productQnt || ""));
+      next.productQnt = current > 0 ? String(Math.floor(current)) : "";
+    }
+    const quantity = parseQuantity(String(next.productQnt || ""));
     const unitPrice = parseMoneyBr(next.productUnitPrice);
     next.totalPriceOnProduct = quantity > 0 ? formatMoneyBr(quantity * unitPrice) : "";
     onChange(next);
@@ -391,17 +422,40 @@ function ProductFormDrawer({
             <h4 className="text-sm font-semibold text-text-secondary">Preço e estoque</h4>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               <label className="block">
+                <span className="mb-1.5 block text-sm text-text-secondary">Unidade de venda *</span>
+                <select
+                  value={value.productUnit || "un"}
+                  onChange={(event) => setField("productUnit", event.target.value)}
+                  className="input-field w-full"
+                >
+                  <option value="un">Unidade</option>
+                  <option value="kg">Quilo (kg)</option>
+                  <option value="l">Litro (L)</option>
+                </select>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {value.productUnit === "kg"
+                    ? "Estoque e preço ficam por quilo. No caixa, 500 é 500 g e 1000 é 1 kg."
+                    : value.productUnit === "l"
+                      ? "O estoque fica em litros. Cada unidade vendida no caixa desconta 1 L, isto é, 1000 ml."
+                      : "Venda por unidade inteira."}
+                </p>
+              </label>
+              <label className="block">
                 <span className="mb-1.5 block text-sm text-text-secondary">
-                  Quantidade do Produto *
+                  {value.productUnit === "l"
+                    ? "Estoque em litros *"
+                    : value.productUnit === "kg"
+                      ? "Estoque em quilos *"
+                      : "Quantidade do Produto *"}
                 </span>
                 <input
                   value={value.productQnt}
-                  inputMode="numeric"
+                  inputMode={value.productUnit === "kg" || value.productUnit === "l" ? "decimal" : "numeric"}
                   onChange={(event) =>
-                    setField("productQnt", sanitizeIntegerInput(event.target.value).slice(0, 8))
+                    setField("productQnt", sanitizeStockInput(event.target.value, value.productUnit || "un"))
                   }
                   className="input-field w-full"
-                  placeholder="Quantidade"
+                  placeholder={value.productUnit === "l" ? "50" : value.productUnit === "kg" ? "12" : "Quantidade"}
                 />
               </label>
               <label className="block">
@@ -573,7 +627,7 @@ function ProductFormDrawer({
   );
 }
 
-export default function ProductRegisterPage() {
+export default function ProductRegisterPage({ canDelete = true }: { canDelete?: boolean }) {
   const statusDialog = useStatusDialog();
   const [products, setProducts] = useState<Product[]>([]);
   const [supplierOptions, setSupplierOptions] = useState<string[]>([]);
@@ -581,12 +635,21 @@ export default function ProductRegisterPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(() => new Set());
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [savedProductDraft] = useState(() =>
+    readFormDraft<{ open: boolean; editingId: string | null; form: ProductFormData }>("produto"),
+  );
+  const [drawerOpen, setDrawerOpen] = useState(
+    () => Boolean(savedProductDraft?.open) || hasFilledValue(savedProductDraft?.form),
+  );
+  const [editingId, setEditingId] = useState<string | null>(() => savedProductDraft?.editingId ?? null);
   const [saving, setSaving] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletingProductIds, setDeletingProductIds] = useState<Set<string>>(() => new Set());
-  const [form, setForm] = useState<ProductFormData>(EMPTY_FORM);
+  const [form, setForm] = useState<ProductFormData>(() => ({
+    ...EMPTY_FORM,
+    ...(savedProductDraft?.form ?? {}),
+  }));
+  usePersistFormDraft("produto", { open: drawerOpen, editingId, form });
 
   useEffect(() => {
     productService
@@ -654,6 +717,10 @@ export default function ProductRegisterPage() {
   };
 
   const openCreateDrawer = () => {
+    if (editingId === null && hasFilledValue(form)) {
+      setDrawerOpen(true);
+      return;
+    }
     setEditingId(null);
     setForm(EMPTY_FORM);
     setDrawerOpen(true);
@@ -794,7 +861,7 @@ export default function ProductRegisterPage() {
       return false;
     }
 
-    if (Number(form.productQnt) < 1) {
+    if (parseQuantity(form.productQnt) <= 0) {
       Toast.error("A quantidade do produto deve ser maior que 0.");
       return false;
     }
@@ -825,6 +892,7 @@ export default function ProductRegisterPage() {
         setProducts((current) => [created, ...current]);
         Toast.success("Produto cadastrado com sucesso.");
       }
+      notifyStockChanged();
     } catch (error) {
       Toast.error(error instanceof Error ? error.message : "Erro ao salvar produto.");
       return;
@@ -841,7 +909,11 @@ export default function ProductRegisterPage() {
     <PageLayout className="space-y-4 py-4 md:space-y-6 md:py-6 lg:py-8">
       <PageHeader
         title="Cadastro de Produto"
-        description="Cadastro e manutenção de produtos com os campos do sistema legado."
+        description={
+          canDelete
+            ? "Cadastro e manutenção de produtos com os campos do sistema legado."
+            : "Inclua um produto novo ou corrija um cadastro. A exclusão fica com o administrador."
+        }
         action={
           <button type="button" onClick={openCreateDrawer} className="btn-primary inline-flex items-center gap-2">
             <Plus size={16} />
@@ -870,7 +942,7 @@ export default function ProductRegisterPage() {
       </section>
 
       <section className="card overflow-hidden">
-        {selectedProductIds.size > 0 ? (
+        {canDelete && selectedProductIds.size > 0 ? (
           <div className="flex flex-col gap-2 border-b border-border-primary bg-primary/8 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-semibold text-text-primary">
               {selectedProductIds.size} produto(s) selecionado(s)
@@ -891,15 +963,17 @@ export default function ProductRegisterPage() {
           <table className="w-full min-w-[920px] text-sm">
             <thead className="bg-bg-primary text-left text-text-secondary">
               <tr>
-                <th className="w-12 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={allProductsOnPageSelected}
-                    onChange={toggleCurrentPageSelection}
-                    aria-label="Selecionar produtos desta página"
-                    className="h-4 w-4 rounded border-border-secondary accent-accent"
-                  />
-                </th>
+                {canDelete && (
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allProductsOnPageSelected}
+                      onChange={toggleCurrentPageSelection}
+                      aria-label="Selecionar produtos desta página"
+                      className="h-4 w-4 rounded border-border-secondary accent-accent"
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3">Imagem</th>
                 <th className="px-4 py-3">Produto</th>
                 <th className="px-4 py-3">Código</th>
@@ -912,15 +986,17 @@ export default function ProductRegisterPage() {
             <tbody>
               {paginatedProducts.map((product) => (
                 <tr key={product.id} className="border-t border-border-primary">
-                  <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedProductIds.has(product.id)}
-                      onChange={() => toggleProductSelection(product.id)}
-                      aria-label={`Selecionar ${product.productName}`}
-                      className="h-4 w-4 rounded border-border-secondary accent-accent"
-                    />
-                  </td>
+                  {canDelete && (
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedProductIds.has(product.id)}
+                        onChange={() => toggleProductSelection(product.id)}
+                        aria-label={`Selecionar ${product.productName}`}
+                        className="h-4 w-4 rounded border-border-secondary accent-accent"
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <div className="h-12 w-12 overflow-hidden rounded-lg border border-border-primary bg-bg-light">
                       {product.productImageUrl ? (
@@ -939,7 +1015,16 @@ export default function ProductRegisterPage() {
                   <td className="px-4 py-3">{product.productName}</td>
                   <td className="px-4 py-3">{product.productCode}</td>
                   <td className="px-4 py-3">{product.productSupplier}</td>
-                  <td className="px-4 py-3">{product.productQnt}</td>
+                  <td className="px-4 py-3">
+                    <span className={isLowStock(parseStockQuantity(product.productQnt)) ? "font-semibold text-amber-800" : undefined}>
+                      {product.productQnt}
+                    </span>
+                    {isLowStock(parseStockQuantity(product.productQnt)) && (
+                      <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                        {stockStatusLabel(parseStockQuantity(product.productQnt))}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{product.productSalePrice}</td>
                   <td className="px-4 py-3">
                     <RowActionsMenu
@@ -950,15 +1035,19 @@ export default function ProductRegisterPage() {
                           icon: <Pencil size={13} />,
                           onClick: () => openEditDrawer(product),
                         },
-                        {
-                          key: "delete",
-                          label: "Excluir",
-                          icon: <Trash2 size={13} />,
-                          onClick: () => handleDelete(product),
-                          loading: deletingProductIds.has(product.id),
-                          loadingLabel: "Excluindo...",
-                          danger: true,
-                        },
+                        ...(canDelete
+                          ? [
+                              {
+                                key: "delete",
+                                label: "Excluir",
+                                icon: <Trash2 size={13} />,
+                                onClick: () => handleDelete(product),
+                                loading: deletingProductIds.has(product.id),
+                                loadingLabel: "Excluindo...",
+                                danger: true,
+                              },
+                            ]
+                          : []),
                       ]}
                     />
                   </td>

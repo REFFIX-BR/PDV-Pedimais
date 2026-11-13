@@ -3,7 +3,7 @@
  * Objetivo: exibe avatar e menu de ações do usuário no rodapé da sidebar.
  * Entradas esperadas: dados do usuário e callbacks para páginas rápidas e logout.
  */
-import { Building2, ChevronUp, Info, LogOut, Settings, User, WalletCards } from "lucide-react";
+import { Building2, ChevronUp, Info, LogOut, Settings, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -14,9 +14,8 @@ type UserMenuProps = {
   avatarUrl: string | null;
   onOpenProfile: () => void;
   onOpenSettings: () => void;
-  onOpenCompany: () => void;
-  onOpenLicense: () => void;
-  onOpenAbout: () => void;
+  onOpenCompany?: () => void;
+  onOpenAbout?: () => void;
   onLogout: () => void;
 };
 
@@ -28,7 +27,6 @@ export default function UserMenu({
   onOpenProfile,
   onOpenSettings,
   onOpenCompany,
-  onOpenLicense,
   onOpenAbout,
   onLogout,
 }: UserMenuProps) {
@@ -166,41 +164,33 @@ export default function UserMenu({
 
               <div className="my-1 border-t border-border-primary" />
 
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenCompany();
-                  setShowUserMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent/10"
-              >
-                <Building2 size={16} />
-                Minha Empresa
-              </button>
+              {onOpenCompany && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenCompany();
+                    setShowUserMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent/10"
+                >
+                  <Building2 size={16} />
+                  Minha Empresa
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenLicense();
-                  setShowUserMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent/10"
-              >
-                <WalletCards size={16} />
-                Detalhes da Licença
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onOpenAbout();
-                  setShowUserMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent/10"
-              >
-                <Info size={16} />
-                Sobre o PDV
-              </button>
+              {onOpenAbout && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenAbout();
+                    setShowUserMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg hover:bg-accent/10"
+                >
+                  <Info size={16} />
+                  Sobre o PDV
+                </button>
+              )}
 
               <div className="my-1 border-t border-border-primary" />
 

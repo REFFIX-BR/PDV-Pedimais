@@ -230,7 +230,6 @@ async function validateAllPagesRender(page: Page) {
     ["Omnichannel", "Omnichannel e Integrações"],
     ["Contas de Usuários", "Usuários"],
     ["Minha Empresa", "Minha Empresa"],
-    ["Detalhes da Licença", "Detalhes da Licença"],
     ["Sobre PDV", "Sobre PDV"],
   ] as const;
 
@@ -271,6 +270,12 @@ async function validateAdvancedModulesThroughUi(page: Page) {
     const editedTitle = `${recordTitle} Editado`;
 
     await openAppPage(page, key, title);
+    if (key === "devolucoes") {
+      await page.getByRole("button", { name: action, exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Nova devolução", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Fechar", exact: true }).click();
+      continue;
+    }
     await page.getByRole("button", { name: action, exact: true }).click();
     await expect(page.getByRole("heading", { name: action, exact: true })).toBeVisible();
     await page.getByLabel("Título").fill(recordTitle);
@@ -371,7 +376,6 @@ function navigationLabelForPage(key: string) {
     omnichannel: "Omnichannel",
     "conta-de-usuario": "Contas de Usuários",
     "minha-empresa": "Minha Empresa",
-    "detalhe-licenca": "Detalhes da Licença",
     "sobre-pdv": "Sobre PDV",
   };
 

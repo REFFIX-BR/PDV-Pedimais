@@ -17,7 +17,7 @@ public class HomeAB(Connection connection)
         var sales = await ListarVendasAsync(companyId);
         var products = await ListarProdutosAsync(companyId);
         var today = DateTimeOffset.Now.Date;
-        var todaySales = sales.Where(item => item.SaleDate.Date == today).ToList();
+        var todaySales = sales.Where(item => item.SaleDate.Date == today && item.Status != "Estornada").ToList();
         var todayRevenue = todaySales.Sum(item => item.TotalAmount);
         var todayCustomers = todaySales
             .Where(item => !string.IsNullOrWhiteSpace(item.CustomerCpf) && item.CustomerCpf != "-")
@@ -36,7 +36,7 @@ public class HomeAB(Connection connection)
                     value = todaySales.Count.ToString(PtBr),
                     helper = "Operações registradas hoje",
                     color = "#2563eb",
-                    trend = BuildDailyTrend(sales, item => item.Count)
+                    trend = BuildDailyTrend(sales, item => item.Count(row => row.Status != "Estornada"))
                 },
                 new
                 {
@@ -73,7 +73,7 @@ public class HomeAB(Connection connection)
     private async Task<List<HomeSaleRow>> ListarVendasAsync(string companyId)
     {
         const string sql = """
-            SELECT SaleDate, CustomerCpf, TotalAmount
+            SELECT SaleDate, CustomerCpf, TotalAmount, RefundedAmount, Status
             FROM Vendas
             WHERE CompanyId = @CompanyId;
             """;
@@ -85,10 +85,13 @@ public class HomeAB(Connection connection)
         var rows = new List<HomeSaleRow>();
         while (await reader.ReadAsync())
         {
+            var status = ReadString(reader, "Status");
+            var net = ParseMoney(ReadString(reader, "TotalAmount")) - ParseMoney(ReadString(reader, "RefundedAmount"));
             rows.Add(new HomeSaleRow(
                 reader.GetDateTimeOffset(reader.GetOrdinal("SaleDate")),
                 ReadString(reader, "CustomerCpf"),
-                ParseMoney(ReadString(reader, "TotalAmount"))));
+                net < 0 ? 0 : net,
+                string.IsNullOrWhiteSpace(status) ? "Concluida" : status));
         }
 
         return rows;
@@ -109,7 +112,7 @@ public class HomeAB(Connection connection)
         var rows = new List<HomeProductRow>();
         while (await reader.ReadAsync())
         {
-            rows.Add(new HomeProductRow(ParseInt(ReadString(reader, "ProductQnt"))));
+            rows.Add(new HomeProductRow(ParseDecimal(ReadString(reader, "ProductQnt"))));
         }
 
         return rows;
@@ -130,8 +133,13 @@ public class HomeAB(Connection connection)
         return reader.IsDBNull(ordinal) ? string.Empty : reader.GetString(ordinal);
     }
 
-    private static int ParseInt(string value)
-        => int.TryParse(value, out var parsed) ? parsed : 0;
+    private static decimal ParseDecimal(string value)
+    {
+        var normalized = value.Trim().Replace(".", "").Replace(",", ".");
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 0;
+    }
 
     private static decimal ParseMoney(string value)
     {
@@ -144,6 +152,6 @@ public class HomeAB(Connection connection)
     private static string FormatMoney(decimal value)
         => value.ToString("C", PtBr);
 
-    private sealed record HomeSaleRow(DateTimeOffset SaleDate, string CustomerCpf, decimal TotalAmount);
-    private sealed record HomeProductRow(int Quantity);
+    private sealed record HomeSaleRow(DateTimeOffset SaleDate, string CustomerCpf, decimal TotalAmount, string Status);
+    private sealed record HomeProductRow(decimal Quantity);
 }
