@@ -9,7 +9,8 @@ cd "$ROOT"
 IMAGE="${IMAGE:-pdv-pedimais-site:latest}"
 STACK="${STACK:-pdv-site}"
 export IMAGE
-export SWARM_NODE="${SWARM_NODE:-$(hostname)}"
+node_name="$(docker info --format '{{.Name}}' 2>/dev/null || true)"
+export SWARM_NODE="${SWARM_NODE:-${node_name:-$(hostname)}}"
 
 swarm_state="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || true)"
 if [[ "$swarm_state" != "active" ]]; then
@@ -154,5 +155,12 @@ docker stack deploy \
   -c site/docker-compose.yml \
   "$STACK"
 
+service_name="${STACK}_site"
+update_help="$(docker service update --help 2>&1 || true)"
+if [[ "$update_help" == *"--pull-policy"* ]]; then
+  docker service update --detach --pull-policy never "$service_name"
+fi
+
 echo "Site enviado ao Swarm. O endereço é https://pdv.reffix.com.br"
 docker stack services "$STACK"
+docker service ps "$service_name" --no-trunc || true

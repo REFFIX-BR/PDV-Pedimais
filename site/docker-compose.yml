@@ -5,7 +5,6 @@
 services:
   site:
     image: ${IMAGE:-pdv-pedimais-site:latest}
-    pull_policy: missing
     networks:
       - traefik
     deploy:
