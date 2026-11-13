@@ -158,7 +158,9 @@ docker stack deploy \
 service_name="${STACK}_site"
 update_help="$(docker service update --help 2>&1 || true)"
 if [[ "$update_help" == *"--pull-policy"* ]]; then
-  docker service update --detach --pull-policy never "$service_name"
+  docker service update --detach --force --pull-policy never "$service_name"
+else
+  docker service update --detach --force "$service_name"
 fi
 
 echo "Site enviado ao Swarm. O endereço é https://pdv.reffix.com.br"
