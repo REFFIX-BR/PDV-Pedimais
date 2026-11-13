@@ -443,7 +443,7 @@ public class AuthController(
     {
         HttpOnly = true,
         Secure = !environment.IsDevelopment(),
-        SameSite = environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.Strict,
+        SameSite = environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
         Path = "/"
     };
 

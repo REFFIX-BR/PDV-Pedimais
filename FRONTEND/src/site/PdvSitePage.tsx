@@ -1,7 +1,7 @@
 /**
  * Arquivo: src/site/PdvSitePage.tsx
  * Objetivo: apresenta o PDV-Pedimais para quem chega pelo site da REFFIX.
- * Entradas esperadas: não recebe props; a página pública fica em /site.
+ * Entradas esperadas: não recebe props. No caixa fica em /site; no domínio público, em / e /precos.
  */
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, FileText, ReceiptText, Truck, Users, Warehouse } from "lucide-react";
@@ -218,9 +218,21 @@ const shots = [
   },
 ];
 
+function siteLocation() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const onCashier = path === "/site" || path.startsWith("/site/");
+  return {
+    onCashier,
+    isPrice: path === "/precos" || path === "/site/precos",
+    homeHref: onCashier ? "/site" : "/",
+    priceHref: onCashier ? "/site/precos" : "/precos",
+  };
+}
+
 export default function PdvSitePage() {
   const [slideIndex, setSlideIndex] = useState(0);
-  const isPrice = window.location.pathname.replace(/\/$/, "") === "/site/precos";
+  const site = siteLocation();
+  const isPrice = site.isPrice;
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -241,21 +253,23 @@ export default function PdvSitePage() {
     <>
       <header className="site-nav">
         <div className="site-wrap site-nav-inner">
-          <a className="site-brand" href="/site" aria-label="PDV-Pedimais">
+          <a className="site-brand" href={site.homeHref} aria-label="PDV-Pedimais">
             <img src="/logo.png" alt="" />
             <img src="/wordmark.png" alt="PDV-Pedimais, painel operacional" />
           </a>
           <nav className="site-nav-links" aria-label="Seções">
-            <a href="/site#telas">Telas</a>
-            <a href="/site#nota">Nota fiscal</a>
-            <a href="/site/precos" aria-current={isPrice ? "page" : undefined}>
+            <a href={`${site.homeHref}#telas`}>Telas</a>
+            <a href={`${site.homeHref}#nota`}>Nota fiscal</a>
+            <a href={site.priceHref} aria-current={isPrice ? "page" : undefined}>
               Preços
             </a>
-            <a href="/site#recursos">Recursos</a>
+            <a href={`${site.homeHref}#recursos`}>Recursos</a>
           </nav>
-          <a className="site-button site-button-primary" href="/">
-            Entrar no painel
-          </a>
+          {site.onCashier ? (
+            <a className="site-button site-button-primary" href="/">
+              Entrar no painel
+            </a>
+          ) : null}
         </div>
       </header>
 
@@ -529,9 +543,11 @@ export default function PdvSitePage() {
                 abre a loja, atende, emite a nota e fecha a gaveta no fim do turno.
               </p>
             </div>
-            <a className="site-button site-button-primary" href="/">
-              Entrar no painel
-            </a>
+            {site.onCashier ? (
+              <a className="site-button site-button-primary" href="/">
+                Entrar no painel
+              </a>
+            ) : null}
           </div>
         </section>
           </>

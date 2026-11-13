@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build --mode prod",
     "build:dev": "tsc -b && node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && vite build --mode development",
     "build:prod": "tsc -b && node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && vite build --mode prod",
+    "build:site": "vite build --config vite.site.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "smoke": "playwright test --config playwright.config.ts",

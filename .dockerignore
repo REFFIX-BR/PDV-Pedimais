@@ -1,0 +1,11 @@
+.git
+**/.git
+**/node_modules
+**/dist
+**/dist-site
+**/bin
+**/obj
+desktop
+API
+docs
+**/*.md

@@ -6,6 +6,7 @@
 const { app, BrowserWindow, Menu, shell, screen, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 
@@ -28,6 +29,9 @@ let mainWindow = null;
 let staticServer = null;
 let updateTimer = null;
 let pendingUpdate = null;
+let stagedInstaller = null;
+let updateInstallStarted = false;
+let updateCheckRunning = false;
 
 const DEFAULT_CONNECTION =
   "Server=.\\SQLEXPRESS;Database=HorusPdv;Integrated Security=True;TrustServerCertificate=True;Encrypt=True;MultipleActiveResultSets=True";
@@ -292,16 +296,12 @@ function attachWindowOpenHandler(window) {
   });
 }
 
-function readUpdateFeed() {
+function readUpdateFeedUrl() {
   try {
     const raw = JSON.parse(fs.readFileSync(path.join(__dirname, "update-feed.json"), "utf8"));
-    return {
-      owner: String(raw.owner || "").trim(),
-      repo: String(raw.repo || "").trim(),
-      url: String(raw.url || "").trim().replace(/\/+$/, ""),
-    };
+    return String(raw.url || "").trim().replace(/\/+$/, "");
   } catch {
-    return { owner: "", repo: "", url: "" };
+    return "";
   }
 }
 
@@ -311,44 +311,149 @@ function sendUpdate(payload) {
   mainWindow.webContents.send("pdv-update", payload);
 }
 
-function startAutoUpdate() {
-  if (!app.isPackaged) return;
-  const feed = readUpdateFeed();
-  if (!feed.url && !(feed.owner && feed.repo)) return;
+function versionParts(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^v/i, "")
+    .split(".")
+    .map((part) => {
+      const match = /^(\d+)/.exec(part);
+      return match ? Number(match[1]) : 0;
+    });
+}
 
-  let autoUpdater;
-  try {
-    ({ autoUpdater } = require("electron-updater"));
-  } catch (error) {
-    console.error("[atualizacao] módulo indisponível", error);
+function compareVersions(left, right) {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (a[index] || 0) - (b[index] || 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+function installerFileName(file) {
+  const name = path.win32.basename(String(file || "").replace(/\\/g, "/")).trim();
+  if (!name || name !== String(file || "").trim() || !name.toLowerCase().endsWith(".exe")) return "";
+  return name;
+}
+
+function requestStream(url, redirectsLeft = 3) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      reject(new Error("endereço de atualização inválido"));
+      return;
+    }
+    const client = parsed.protocol === "https:" ? https : http;
+    const request = client.get(url, { headers: { "Cache-Control": "no-cache" } }, (response) => {
+      const status = response.statusCode || 0;
+      const location = response.headers.location;
+      if ([301, 302, 303, 307, 308].includes(status) && location && redirectsLeft > 0) {
+        response.resume();
+        resolve(requestStream(new URL(location, url).toString(), redirectsLeft - 1));
+        return;
+      }
+      if (status < 200 || status >= 300) {
+        response.resume();
+        reject(new Error(`atualização respondeu ${status}`));
+        return;
+      }
+      resolve(response);
+    });
+    request.on("error", reject);
+  });
+}
+
+function readResponse(response) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    response.on("data", (chunk) => chunks.push(chunk));
+    response.on("end", () => resolve(Buffer.concat(chunks)));
+    response.on("error", reject);
+  });
+}
+
+function downloadTo(url, destination) {
+  return requestStream(url).then(
+    (response) =>
+      new Promise((resolve, reject) => {
+        const file = fs.createWriteStream(destination);
+        response.pipe(file);
+        file.on("finish", () => file.close(() => resolve(destination)));
+        file.on("error", (error) => {
+          file.close(() => reject(error));
+        });
+        response.on("error", reject);
+      }),
+  );
+}
+
+function launchStagedInstaller() {
+  if (updateInstallStarted || !stagedInstaller || !fs.existsSync(stagedInstaller)) return;
+  updateInstallStarted = true;
+  spawn(stagedInstaller, ["/S"], { detached: true, stdio: "ignore" }).unref();
+}
+
+async function checkServerVersion(feedUrl) {
+  const localVersion = app.getVersion();
+  const response = await requestStream(`${feedUrl}/version.json?t=${Date.now()}`);
+  const manifest = JSON.parse((await readResponse(response)).toString("utf8").replace(/^\uFEFF/, ""));
+  const remoteVersion = String(manifest.version || "").trim();
+  if (!remoteVersion || compareVersions(remoteVersion, localVersion) <= 0) return;
+
+  const fileName = installerFileName(manifest.file);
+  if (!fileName) throw new Error("o version.json não informou o instalador");
+
+  const folder = path.join(app.getPath("userData"), "updates");
+  fs.mkdirSync(folder, { recursive: true });
+  const destination = path.join(folder, fileName);
+  if (stagedInstaller === destination && fs.existsSync(destination)) {
+    sendUpdate({ status: "ready", version: remoteVersion });
     return;
   }
 
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.setFeedURL(
-    feed.url
-      ? { provider: "generic", url: feed.url }
-      : { provider: "github", owner: feed.owner, repo: feed.repo },
-  );
-  autoUpdater.on("update-available", (info) => {
-    sendUpdate({ status: "available", version: info?.version || "" });
-  });
-  autoUpdater.on("update-downloaded", (info) => {
-    sendUpdate({ status: "ready", version: info?.version || "" });
-  });
-  autoUpdater.on("error", (error) => {
-    console.error("[atualizacao]", error);
-  });
+  sendUpdate({ status: "available", version: remoteVersion });
+  const temporary = `${destination}.download`;
+  await downloadTo(`${feedUrl}/${encodeURIComponent(fileName)}`, temporary);
+  const size = fs.statSync(temporary).size;
+  if (size < 1000000) {
+    fs.unlinkSync(temporary);
+    throw new Error("o instalador baixado está incompleto");
+  }
+  if (fs.existsSync(destination)) fs.unlinkSync(destination);
+  fs.renameSync(temporary, destination);
+  stagedInstaller = destination;
+  sendUpdate({ status: "ready", version: remoteVersion });
+}
+
+function startAutoUpdate() {
+  if (!app.isPackaged) return;
+  const feedUrl = readUpdateFeedUrl();
+  if (!feedUrl) return;
 
   ipcMain.handle("pdv-install-update", () => {
-    autoUpdater.quitAndInstall(false, true);
+    launchStagedInstaller();
+    app.quit();
   });
 
-  const check = () => {
-    autoUpdater.checkForUpdates().catch((error) => {
+  const check = async () => {
+    if (updateCheckRunning) return;
+    updateCheckRunning = true;
+    try {
+      await checkServerVersion(feedUrl);
+    } catch (error) {
       console.error("[atualizacao]", error);
-    });
+    } finally {
+      updateCheckRunning = false;
+    }
   };
   check();
   updateTimer = setInterval(check, 60 * 60 * 1000);
@@ -418,6 +523,14 @@ async function firstResponding(urls) {
 }
 
 async function resolveAppUrl() {
+  if (isProdMode()) {
+    const distDir = path.join(FRONTEND_DIR, "dist");
+    if (!fs.existsSync(path.join(distDir, "index.html"))) {
+      throw new Error("A pasta FRONTEND/dist ainda não existe. Rode o build do frontend antes de abrir o modo de produção.");
+    }
+    return serveDist(distDir);
+  }
+
   const apiUp = await firstResponding(API_CANDIDATES);
   if (!apiUp) {
     await setSplashMessage("Preparando o caixa. Na primeira vez isso pode levar um pouco.");
@@ -427,14 +540,6 @@ async function resolveAppUrl() {
     } catch {
       throw new Error("A API não respondeu em http://localhost:5260. Confira se o SQL Server Express e o .NET estão instalados.");
     }
-  }
-
-  if (isProdMode()) {
-    const distDir = path.join(FRONTEND_DIR, "dist");
-    if (!fs.existsSync(path.join(distDir, "index.html"))) {
-      throw new Error("A pasta FRONTEND/dist ainda não existe. Rode o build do frontend antes de abrir o modo de produção.");
-    }
-    return serveDist(distDir);
   }
 
   const webUp = await firstResponding(WEB_CANDIDATES);
@@ -507,6 +612,7 @@ if (!gotLock) {
   app.on("window-all-closed", () => app.quit());
   app.on("before-quit", () => {
     if (updateTimer) clearInterval(updateTimer);
+    launchStagedInstaller();
   });
   app.on("before-quit", stopOwnedChildren);
 }

@@ -8,7 +8,7 @@
   "scripts": {
     "start": "electron .",
     "start:prod": "electron . --prod",
-    "dist": "npx electron-builder --win --config electron-builder.config.cjs"
+    "dist": "npx electron-builder --win --config electron-builder.config.cjs && node write-update-manifest.cjs"
   },
   "build": {
     "appId": "br.com.pedimais.pdv",

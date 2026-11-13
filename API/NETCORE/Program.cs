@@ -4,6 +4,7 @@
  * Entradas esperadas: espera configurações de ambiente/appsettings e registra o pipeline HTTP da aplicação.
  */
 using HORUSPDV_API.Middlewares;
+using Microsoft.Extensions.FileProviders;
 using HORUSPDV_API.Repositories;
 using HORUSPDV_API.Repositories.DatabaseAccess;
 using HORUSPDV_API.Services.Caixa;
@@ -92,6 +93,21 @@ if (!app.Environment.IsDevelopment())
 app.UseRouting();
 app.UseMiddleware<HorusSecurityHeadersMiddleware>();
 app.UseCors("HorusPdvCorsPolicy");
+
+var updatesDirectory = Path.Combine(app.Environment.ContentRootPath, "atualizacoes");
+Directory.CreateDirectory(updatesDirectory);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(updatesDirectory),
+    RequestPath = "/atualizacoes",
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/octet-stream",
+    OnPrepareResponse = context =>
+    {
+        context.Context.Response.Headers.CacheControl = "no-cache";
+    }
+});
+
 app.UseMiddleware<HorusRequestTelemetryMiddleware>();
 app.UseMiddleware<HorusRequestBodyLimitMiddleware>();
 app.UseMiddleware<HorusRateLimitMiddleware>();

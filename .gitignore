@@ -6,6 +6,7 @@ node_modules/
 
 # Build output
 dist/
+dist-site/
 
 # macOS metadata
 .DS_Store
@@ -19,3 +20,7 @@ dist/
 #CSharp Build output
 bin/
 obj/
+
+# Instaladores publicados na API. O version.json pode entrar no repositório.
+API/NETCORE/atualizacoes/*
+!API/NETCORE/atualizacoes/.gitkeep
