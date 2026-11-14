@@ -150,10 +150,24 @@ function contentType(filePath) {
     ".jpeg": "image/jpeg",
     ".webp": "image/webp",
     ".ico": "image/x-icon",
+    ".gif": "image/gif",
     ".woff": "font/woff",
     ".woff2": "font/woff2",
   };
   return types[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+function cacheControl(filePath) {
+  const name = path.basename(filePath);
+  const ext = path.extname(name).toLowerCase();
+  if (name === "index.html" || ext === ".html") return "no-cache";
+  if (/-[A-Za-z0-9_]{6,}\.(js|css|png|jpe?g|webp|svg|gif|woff2?)$/i.test(name)) {
+    return "public, max-age=31536000, immutable";
+  }
+  if ([".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico", ".woff", ".woff2"].includes(ext)) {
+    return "public, max-age=604800";
+  }
+  return "public, max-age=3600";
 }
 
 function serveDist(distDir) {
@@ -169,14 +183,26 @@ function serveDist(distDir) {
       const filePath = path.resolve(root, relative);
       const insideRoot = filePath === root || filePath.startsWith(root + path.sep);
 
-      const sendFile = (target, statusCode) => {
+      const sendFile = (target, statusCode, stat) => {
+        const headers = {
+          "Content-Type": contentType(target),
+          "Cache-Control": cacheControl(target),
+        };
+        if (stat) {
+          headers.ETag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+          if (request.headers["if-none-match"] === headers.ETag) {
+            response.writeHead(304, headers);
+            response.end();
+            return;
+          }
+        }
         fs.readFile(target, (error, data) => {
           if (error) {
             response.writeHead(404);
             response.end("Arquivo não encontrado.");
             return;
           }
-          response.writeHead(statusCode, { "Content-Type": contentType(target) });
+          response.writeHead(statusCode, headers);
           response.end(data);
         });
       };
@@ -189,10 +215,13 @@ function serveDist(distDir) {
 
       fs.stat(filePath, (error, stat) => {
         if (!error && stat.isFile()) {
-          sendFile(filePath, 200);
+          sendFile(filePath, 200, stat);
           return;
         }
-        sendFile(path.join(root, "index.html"), 200);
+        const indexPath = path.join(root, "index.html");
+        fs.stat(indexPath, (indexError, indexStat) => {
+          sendFile(indexPath, 200, indexError ? undefined : indexStat);
+        });
       });
     });
 

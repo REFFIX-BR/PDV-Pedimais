@@ -2,7 +2,7 @@
   "name": "horuspdv-desktop",
   "productName": "PDV-Pedimais",
   "private": true,
-  "version": "0.1.1-alpha",
+  "version": "0.1.2-alpha",
   "description": "Janela de caixa do PDV-Pedimais.",
   "main": "main.cjs",
   "scripts": {
