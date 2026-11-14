@@ -87,6 +87,62 @@ public class EmpresaAB(Connection connection, HorusSecretProtector secretProtect
         return await ObterAsync(companyId) ?? empresa;
     }
 
+    public async Task<(string Status, string Message)> ObterManutencaoAsync(string companyId)
+    {
+        await using var db = await connection.OpenConnectionAsync();
+        await EnsureMaintenanceColumnsAsync(db);
+        await using var command = new SqlCommand(
+            """
+            SELECT MaintenanceStatus, MaintenanceMessage
+            FROM Empresas
+            WHERE Id = @Id;
+            """,
+            db);
+        command.Parameters.AddWithValue("@Id", companyId);
+        await using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return ("operando", string.Empty);
+        return (NormalizeStatus(ReadString(reader, "MaintenanceStatus")), ReadString(reader, "MaintenanceMessage"));
+    }
+
+    public async Task<(string Status, string Message)> DefinirManutencaoAsync(string companyId, string? status, string? message)
+    {
+        var normalized = NormalizeStatus(status);
+        var text = (message ?? string.Empty).Trim();
+        if (text.Length > 500) text = text[..500];
+
+        await using var db = await connection.OpenConnectionAsync();
+        await EnsureMaintenanceColumnsAsync(db);
+        await using var command = new SqlCommand(
+            """
+            UPDATE Empresas
+            SET MaintenanceStatus = @Status,
+                MaintenanceMessage = @Message
+            WHERE Id = @Id;
+            """,
+            db);
+        command.Parameters.AddWithValue("@Id", companyId);
+        command.Parameters.AddWithValue("@Status", normalized);
+        command.Parameters.AddWithValue("@Message", text);
+        await command.ExecuteNonQueryAsync();
+        return (normalized, text);
+    }
+
+    private static async Task EnsureMaintenanceColumnsAsync(SqlConnection db)
+    {
+        await using var command = new SqlCommand(
+            """
+            ALTER TABLE Empresas ADD COLUMN IF NOT EXISTS MaintenanceStatus varchar(20) NOT NULL DEFAULT 'operando';
+            ALTER TABLE Empresas ADD COLUMN IF NOT EXISTS MaintenanceMessage varchar(500) NOT NULL DEFAULT '';
+            """,
+            db);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private static string NormalizeStatus(string? status)
+        => string.Equals(status?.Trim(), "manutencao", StringComparison.OrdinalIgnoreCase)
+            ? "manutencao"
+            : "operando";
+
     private void AddParameters(SqlCommand command, EmpresaAD source)
     {
         command.Parameters.AddWithValue("@FantasyName", source.FantasyName.Trim());

@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS empresas (
     emailsmtpfromemail varchar(180) NOT NULL DEFAULT '',
     emailsmtpfromname varchar(180) NOT NULL DEFAULT '',
     emailsmtpreplyto varchar(180) NOT NULL DEFAULT '',
-    planexpiresat timestamptz NULL
+    planexpiresat timestamptz NULL,
+    maintenancestatus varchar(20) NOT NULL DEFAULT 'operando',
+    maintenancemessage varchar(500) NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -308,3 +310,5 @@ CREATE TABLE IF NOT EXISTS cupons (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cupons_company_code ON cupons (companyid, code);
 
 ALTER TABLE empresas ADD COLUMN IF NOT EXISTS planexpiresat timestamptz NULL;
+ALTER TABLE empresas ADD COLUMN IF NOT EXISTS maintenancestatus varchar(20) NOT NULL DEFAULT 'operando';
+ALTER TABLE empresas ADD COLUMN IF NOT EXISTS maintenancemessage varchar(500) NOT NULL DEFAULT '';
