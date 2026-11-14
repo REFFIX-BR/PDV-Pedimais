@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import type { ReactNode } from "react";
 import BrandLogo from "@/components/BrandLogo";
 import BrandWordmark from "@/components/BrandWordmark";
+import AppVersionLabel from "@/components/Desktop/AppVersionLabel";
 
 type AuthLayoutProps = {
   title: string;
@@ -29,6 +30,7 @@ export default function AuthLayout({
         <section className="auth-story">
           <BrandLogo className="auth-story-logo h-16 w-16" />
           <BrandWordmark className="auth-story-wordmark h-12 w-auto max-w-full" />
+          <AppVersionLabel className="mt-1 block text-xs font-medium text-slate-500" />
           <h1>O caixa do seu balcão.</h1>
           <p>
             Vendas, estoque e nota no mesmo lugar. Cada empresa entra no próprio espaço.

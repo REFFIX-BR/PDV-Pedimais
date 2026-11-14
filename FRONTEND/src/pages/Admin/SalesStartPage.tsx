@@ -6,6 +6,7 @@
 
 import { Image as ImageIcon, Printer, Search, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AppVersionLabel from "@/components/Desktop/AppVersionLabel";
 import LowStockBanner from "@/components/Stock/LowStockBanner";
 import LowStockBell from "@/components/Stock/LowStockBell";
 import { isLowStock, notifyStockChanged } from "@/domain/stock/lowStock";
@@ -885,7 +886,10 @@ export default function SalesStartPage({
               <img src="/logo.png" alt="PDV-Pedimais" className="h-12 w-12 object-contain md:h-14 md:w-14" />
               <div>
               <h1 className="font-display text-2xl font-bold italic leading-none md:text-4xl">PDV-Pedimais</h1>
-              <p className="text-sm italic leading-none md:text-lg">Frente de Caixa</p>
+              <p className="text-sm italic leading-none md:text-lg">
+                Frente de Caixa
+                <AppVersionLabel className="ml-2 align-middle text-xs font-medium not-italic opacity-80" />
+              </p>
               </div>
             </div>
             <div className="flex items-start gap-3">

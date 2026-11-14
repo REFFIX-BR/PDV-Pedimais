@@ -5,6 +5,7 @@
  */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, Menu } from "lucide-react";
+import AppVersionLabel from "@/components/Desktop/AppVersionLabel";
 import DesktopUpdateNotice from "@/components/Desktop/DesktopUpdateNotice";
 import AppSidebar, { type PageKey } from "@/components/AppSidebar/AppSidebar";
 import PlanExpiredModal from "@/components/Plan/PlanExpiredModal";
@@ -752,7 +753,10 @@ export default function App() {
 
           <h1 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-primary truncate px-2">
             <img src="/logo.png" alt="" className="h-7 w-7 shrink-0 object-contain" />
-            <span className="truncate">{pageTitleByKey[activePage]}</span>
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate">{pageTitleByKey[activePage]}</span>
+              <AppVersionLabel className="truncate text-[10px] font-medium text-text-secondary" />
+            </span>
           </h1>
           <LowStockBell />
           <button

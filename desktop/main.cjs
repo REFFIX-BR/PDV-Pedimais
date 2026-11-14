@@ -30,6 +30,7 @@ let staticServer = null;
 let updateTimer = null;
 let pendingUpdate = null;
 let stagedInstaller = null;
+let launchedAfterUpdate = process.argv.includes("--atualizado");
 let updateInstallStarted = false;
 let updateCheckRunning = false;
 
@@ -285,7 +286,7 @@ function attachWindowOpenHandler(window) {
         height: 800,
         minWidth: 1024,
         minHeight: 640,
-        title: "PDV-Pedimais",
+        title: `PDV-Pedimais ${app.getVersion()}`,
         icon: APP_ICON,
         backgroundColor: "#111827",
         autoHideMenuBar: true,
@@ -477,7 +478,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     show: false,
-    title: "PDV-Pedimais",
+    title: `PDV-Pedimais ${app.getVersion()}`,
     icon: APP_ICON,
     backgroundColor: "#111827",
     autoHideMenuBar: true,
@@ -626,6 +627,11 @@ if (!gotLock) {
       console.error("[banco-local]", error);
     }
     ipcMain.handle("pdv-local", (_event, payload) => localDb.handle(payload));
+    ipcMain.handle("pdv-app-version", () => app.getVersion());
+    ipcMain.handle("pdv-updated-version", () => (launchedAfterUpdate ? app.getVersion() : ""));
+    ipcMain.handle("pdv-dismiss-updated", () => {
+      launchedAfterUpdate = false;
+    });
     return boot();
   });
   app.on("window-all-closed", () => app.quit());

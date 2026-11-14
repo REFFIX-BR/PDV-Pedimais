@@ -32,6 +32,7 @@ import {
 import { type ReactNode } from "react";
 import BrandLogo from "@/components/BrandLogo";
 import BrandWordmark from "@/components/BrandWordmark";
+import AppVersionLabel from "@/components/Desktop/AppVersionLabel";
 import UserMenu from "./UserMenu";
 import LowStockBell from "@/components/Stock/LowStockBell";
 import { canAccessPage } from "@/domain/access/pageAccess";
@@ -186,6 +187,7 @@ export default function AppSidebar({
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <BrandWordmark className="h-10 w-full" />
+                <AppVersionLabel className="mt-0.5 block truncate text-[11px] font-medium text-text-secondary" />
               </div>
             )}
           </div>

@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("horusDesktop", {
     return () => ipcRenderer.removeListener("pdv-update", listener);
   },
   installUpdate: () => ipcRenderer.invoke("pdv-install-update"),
+  getVersion: () => ipcRenderer.invoke("pdv-app-version"),
+  updatedVersion: () => ipcRenderer.invoke("pdv-updated-version"),
+  dismissUpdated: () => ipcRenderer.invoke("pdv-dismiss-updated"),
 });
 
 contextBridge.exposeInMainWorld("pdvLocal", {

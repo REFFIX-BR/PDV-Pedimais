@@ -22,6 +22,7 @@ module.exports = {
   nsis: {
     ...pkg.build.nsis,
     artifactName: "PDV-Pedimais-${version}-${arch}.${ext}",
+    include: "installer.nsh",
   },
   publish: url ? [{ provider: "generic", url }] : null,
 };

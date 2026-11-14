@@ -1,8 +1,8 @@
 {
-  "version": "0.1.2-alpha",
-  "file": "PDV-Pedimais-0.1.2-alpha-x64.exe",
+  "version": "0.1.3-alpha",
+  "file": "PDV-Pedimais-0.1.3-alpha-x64.exe",
   "files": {
-    "x64": "PDV-Pedimais-0.1.2-alpha-x64.exe",
-    "ia32": "PDV-Pedimais-0.1.2-alpha-ia32.exe"
+    "x64": "PDV-Pedimais-0.1.3-alpha-x64.exe",
+    "ia32": "PDV-Pedimais-0.1.3-alpha-ia32.exe"
   }
 }
