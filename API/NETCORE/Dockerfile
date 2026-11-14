@@ -6,6 +6,7 @@ RUN dotnet publish HORUSPDV-API.csproj -c Release -o /app /p:UseAppHost=false
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app .
+COPY atualizacoes/ /app/atualizacoes/
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "HORUSPDV-API.dll"]

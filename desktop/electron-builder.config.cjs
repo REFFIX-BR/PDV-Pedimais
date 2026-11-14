@@ -8,6 +8,8 @@ const url = String(feed.url || "").trim().replace(/\/+$/, "");
 
 module.exports = {
   ...pkg.build,
+  compression: "maximum",
+  electronLanguages: ["pt-BR", "en-US"],
   npmRebuild: false,
   extraResources: [{ from: "../FRONTEND/dist", to: "frontend" }],
   win: {

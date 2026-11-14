@@ -3,6 +3,7 @@ bin/
 obj/
 *.dll
 *.exe
+!atualizacoes/*.exe
 *.pdb
 
 # Visual Studio

@@ -22,6 +22,8 @@ dist-site/
 bin/
 obj/
 
-# Instaladores publicados na API. O version.json pode entrar no repositório.
+# Instaladores publicados na API. O version.json e os .exe dessa pasta vão para o servidor.
 API/NETCORE/atualizacoes/*
 !API/NETCORE/atualizacoes/.gitkeep
+!API/NETCORE/atualizacoes/version.json
+!API/NETCORE/atualizacoes/*.exe
